@@ -1,0 +1,13 @@
+{
+  "lesson": {
+    "id": "lesson-unsupported",
+    "title": "Synthetic unsupported lesson",
+    "slides": [
+      {
+        "index": 0,
+        "type": "future-opaque-kind",
+        "title": "Future opaque slide"
+      }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "resources": [
+    {
+      "id": "resource-1",
+      "name": "Synthetic notes",
+      "extension": ".pdf",
+      "size": 128,
+      "category": "Synthetic resources",
+      "updated_at": "2099-01-01T00:00:00Z"
+    }
+  ]
+}

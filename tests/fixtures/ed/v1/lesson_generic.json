@@ -1,0 +1,14 @@
+{
+  "lesson": {
+    "id": "lesson-generic",
+    "title": "Synthetic generic lesson",
+    "slides": [
+      {
+        "index": 0,
+        "type": "future-visible-kind",
+        "title": "Future visible slide",
+        "content": "<document><paragraph>Fallback content remains visible</paragraph></document>"
+      }
+    ]
+  }
+}

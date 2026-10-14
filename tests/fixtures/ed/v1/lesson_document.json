@@ -1,0 +1,14 @@
+{
+  "lesson": {
+    "id": "lesson-document",
+    "title": "Synthetic document lesson",
+    "slides": [
+      {
+        "index": 0,
+        "type": "document",
+        "title": "Document",
+        "content": "<document><paragraph>Synthetic visible content</paragraph></document>"
+      }
+    ]
+  }
+}

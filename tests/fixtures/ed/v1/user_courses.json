@@ -1,0 +1,13 @@
+{
+  "courses": [
+    {
+      "course": {
+        "id": "course-synthetic-1",
+        "code": "SYNTH1000",
+        "name": "Synthetic Contract Course",
+        "year": "2099",
+        "session": "Test"
+      }
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.local
+*.env
+
+# Local configuration files with tokens
+*_local.json
+credentials_local.json
+.course_update_state.json
+claude_desktop_config.json
+
+# Claude Code configuration (NEVER commit to GitHub)
+CLAUDE.md
+.claude/
+.agents/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local audit snapshots and generated course content
+artifacts/
+downloads/
+exports/
+output/
+
+# Personal launchers and course-specific working files
+Course Material Sync.command
+comp2022_discrete_mathematics_foundations_clean.md
+export_canvas_cmpn1013_pages.py
+reorder_soft2412_lessons.py
+reorder_soft2412_pdfs.py
+tools/

@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, python: "3.10" }
+          - { os: ubuntu-latest, python: "3.11" }
+          - { os: ubuntu-latest, python: "3.12" }
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: ubuntu-latest, python: "3.14" }
+          - { os: ubuntu-latest, python: "3.15" }
+          - { os: macos-latest, python: "3.10" }
+          - { os: macos-latest, python: "3.15" }
+          - { os: windows-latest, python: "3.10" }
+          - { os: windows-latest, python: "3.15" }
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install package and test tooling
+        run: |
+          python -m pip install --upgrade pip "uv==0.9.30"
+          uv sync --locked --all-extras --no-dev
+      - name: Run synthetic test suite
+        run: uv run --locked --all-extras python -B -m unittest discover -s tests -v
+      - name: Validate owner-device macOS matrix plan
+        run: uv run --locked --all-extras python -B ci/macos_release_matrix.py --plan
+      - name: Check installed console entry points outside the checkout
+        run: |
+          uv run --locked --all-extras canvas-ed-mcp --version
+          uv run --locked --all-extras canvas-ed-mcp --help
+          uv run --locked --all-extras course-sync --help
+      - name: Validate installed dependencies
+        run: uv run --locked --all-extras --with pip python -m pip check
+
+  build:
+    name: Build and audit distributions
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.15"
+      - name: Build wheel and source distribution
+        run: |
+          python -m pip install --upgrade pip "build>=1,<2" "uv==0.9.30"
+          uv lock --check
+          python -m build
+      - name: Audit public distribution manifests
+        run: python ci/verify_distribution.py dist
+      - name: Verify lock and SBOM freshness
+        run: python ci/verify_release_metadata.py
+      - name: Install the exact built wheel
+        shell: python
+        run: |
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          wheel, = Path("dist").glob("*.whl")
+          subprocess.run(
+              [sys.executable, "-m", "pip", "install", "--force-reinstall", str(wheel)],
+              check=True,
+          )
+      - name: Smoke-test exact wheel entry points outside the checkout
+        shell: python
+        run: |
+          import subprocess
+          import tempfile
+          from pathlib import Path
+
+          with tempfile.TemporaryDirectory() as temporary:
+              cwd = Path(temporary)
+              subprocess.run(["canvas-ed-mcp", "--version"], cwd=cwd, check=True)
+              subprocess.run(["canvas-ed-mcp", "--help"], cwd=cwd, check=True)
+              subprocess.run(["course-sync", "--help"], cwd=cwd, check=True)
+      - name: Smoke-test exact wheel MCP protocol outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: python "${{ github.workspace }}/ci/smoke_installed.py"
+      - name: Validate exact wheel installation
+        run: python -m pip check
+      - name: Audit deterministic clean-source candidate
+        shell: bash
+        run: |
+          python ci/release_gate.py \
+            --root . \
+            --output-dir "${RUNNER_TEMP}/release-candidate" \
+            --version 0.1.0rc1 \
+            --source-date-epoch "$(git log -1 --pretty=%ct)"
+      - name: Install the audited clean-source candidate
+        shell: bash
+        run: |
+          python -m pip install --force-reinstall \
+            "${RUNNER_TEMP}/release-candidate/canvas-ed-mcp-0.1.0rc1-source.tar.gz"
+          canvas-ed-mcp --version
+      - name: Smoke-test clean-source MCP protocol outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: python "${{ github.workspace }}/ci/smoke_installed.py"
+      - name: Validate clean-source installation
+        run: python -m pip check

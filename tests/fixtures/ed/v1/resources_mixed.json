@@ -1,0 +1,22 @@
+{
+  "resources": [
+    {
+      "id": "resource-1",
+      "name": "First synthetic file",
+      "extension": ".txt",
+      "size": 10
+    },
+    {
+      "id": "resource-invalid",
+      "name": "Malformed synthetic file",
+      "extension": ".bin",
+      "size": "not-an-integer"
+    },
+    {
+      "id": "resource-2",
+      "name": "Later synthetic file",
+      "extension": ".pdf",
+      "size": 20
+    }
+  ]
+}

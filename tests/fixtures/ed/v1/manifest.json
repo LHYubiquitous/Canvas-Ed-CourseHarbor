@@ -1,0 +1,26 @@
+{
+  "fixture_schema": 1,
+  "contract": "ed-synthetic-contract-v1",
+  "synthetic": true,
+  "api_base_url": "https://ed.invalid/api",
+  "course_id": "course-synthetic-1",
+  "supported_slide_kinds": [
+    "code",
+    "document",
+    "html",
+    "pdf",
+    "quiz",
+    "workspace-partition"
+  ],
+  "generic_slide_issue": "generic_slide_rendered",
+  "unsupported_slide_issue": "unsupported_slide_kind",
+  "fixtures": {
+    "user_courses": "user_courses.json",
+    "resources_complete": "resources_complete.json",
+    "resources_mixed": "resources_mixed.json",
+    "lessons_index": "lessons_index.json",
+    "lesson_document": "lesson_document.json",
+    "lesson_generic": "lesson_generic.json",
+    "lesson_unsupported": "lesson_unsupported.json"
+  }
+}

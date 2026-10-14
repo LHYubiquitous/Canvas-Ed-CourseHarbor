@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a portable, privacy-preserving improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the use case without account or course data.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and compatibility impact
+      description: Address provider opt-in, user-file protection, credentials, and migration.
+    validations:
+      required: true

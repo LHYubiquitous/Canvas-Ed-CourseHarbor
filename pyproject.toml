@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canvas-ed-mcp"
+version = "0.1.0rc1"
+description = "Portable, local-first Canvas and Ed course sync with an MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "canvas-ed-mcp contributors" }]
+keywords = ["canvas", "ed-discussion", "mcp", "education"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+]
+dependencies = [
+  "beautifulsoup4>=4.12.0",
+  "httpx>=0.25.0",
+  "keyring>=25.0.0,<26.0.0",
+  "mcp>=1.29.0,<2.0.0",
+  "platformdirs>=4.0.0",
+  "pydantic>=2.0.0",
+  "tomli>=2.0.0; python_version < '3.11'",
+  "tomli-w>=1.0.0",
+]
+
+[project.optional-dependencies]
+gradescope = ["gradescopeapi>=1.8.1"]
+test = []
+
+[project.urls]
+Homepage = "https://github.com/LHYubiquitous/canvas-ed-mcp"
+Issues = "https://github.com/LHYubiquitous/canvas-ed-mcp/issues"
+Upstream = "https://github.com/r1ckyIn/canvas-ed-mcp"
+
+[project.scripts]
+canvas-ed-mcp = "canvas_ed_mcp.cli:main"
+course-sync = "canvas_ed_mcp.cli:course_sync_main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.pyc", "__pycache__/*"]

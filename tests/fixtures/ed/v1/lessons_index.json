@@ -1,0 +1,7 @@
+{
+  "lessons": [
+    {"id": "lesson-document"},
+    {"id": "lesson-generic"},
+    {"id": "lesson-unsupported"}
+  ]
+}
