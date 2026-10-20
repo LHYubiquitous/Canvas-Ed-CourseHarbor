@@ -1,6 +1,6 @@
 # macOS Automated Release Test Matrix
 
-> Target: the repository owner's Mac and private branch
+> Target: `canvas-ed-mcp 0.2.0rc11` on the repository owner's Mac and private branch
 > `hy/phase-3-4-portability`. This matrix performs no real Canvas/Ed request,
 > course download, Git mutation, or publication.
 
@@ -24,7 +24,7 @@ change existing work.
 
 ## 2. Run the complete automated matrix
 
-`uv 0.9.30` must already be installed as a user-level tool; the runner rejects a
+`uv 0.11.28` must already be installed as a user-level tool; the runner rejects a
 different release so that lock/export semantics remain identical to the reviewed CI.
 From the clean clone, run one command:
 

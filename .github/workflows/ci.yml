@@ -41,7 +41,7 @@ jobs:
           cache: pip
       - name: Install package and test tooling
         run: |
-          python -m pip install --upgrade pip "uv==0.9.30"
+          python -m pip install --upgrade pip "uv==0.11.28"
           uv sync --locked --all-extras --no-dev
       - name: Run synthetic test suite
         run: uv run --locked --all-extras python -B -m unittest discover -s tests -v
@@ -67,23 +67,35 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.15"
-      - name: Build wheel and source distribution
+      - name: Build deterministic release-candidate packet
         run: |
-          python -m pip install --upgrade pip "build>=1,<2" "uv==0.9.30"
+          python -m pip install --upgrade pip "uv==0.11.28"
           uv lock --check
-          python -m build
+          uv sync --locked --all-extras
+          uv run --locked --all-extras python -B ci/build_release_candidate.py \
+            --root . \
+            --output-dir "${RUNNER_TEMP}/release-candidate" \
+            --source-date-epoch "$(git log -1 --pretty=%ct)"
       - name: Audit public distribution manifests
-        run: python ci/verify_distribution.py dist
+        shell: bash
+        run: |
+          VERSION="$(uv run --locked python -c 'from ci.release_gate import read_project_version; print(read_project_version("."))')"
+          uv run --locked python -B ci/verify_distribution.py \
+            "${RUNNER_TEMP}/release-candidate/canvas_ed_mcp-${VERSION}-py3-none-any.whl" \
+            "${RUNNER_TEMP}/release-candidate/canvas_ed_mcp-${VERSION}.tar.gz"
       - name: Verify lock and SBOM freshness
-        run: python ci/verify_release_metadata.py
+        run: uv run --locked python -B ci/verify_release_metadata.py
       - name: Install the exact built wheel
         shell: python
         run: |
+          import os
           import subprocess
           import sys
           from pathlib import Path
 
-          wheel, = Path("dist").glob("*.whl")
+          wheel, = Path(os.environ["RUNNER_TEMP"]).joinpath(
+              "release-candidate"
+          ).glob("*.whl")
           subprocess.run(
               [sys.executable, "-m", "pip", "install", "--force-reinstall", str(wheel)],
               check=True,
@@ -105,19 +117,12 @@ jobs:
         run: python "${{ github.workspace }}/ci/smoke_installed.py"
       - name: Validate exact wheel installation
         run: python -m pip check
-      - name: Audit deterministic clean-source candidate
-        shell: bash
-        run: |
-          python ci/release_gate.py \
-            --root . \
-            --output-dir "${RUNNER_TEMP}/release-candidate" \
-            --version 0.1.0rc1 \
-            --source-date-epoch "$(git log -1 --pretty=%ct)"
       - name: Install the audited clean-source candidate
         shell: bash
         run: |
+          VERSION="$(python -c 'from ci.release_gate import read_project_version; print(read_project_version("."))')"
           python -m pip install --force-reinstall \
-            "${RUNNER_TEMP}/release-candidate/canvas-ed-mcp-0.1.0rc1-source.tar.gz"
+            "${RUNNER_TEMP}/release-candidate/canvas-ed-mcp-${VERSION}-source.tar.gz"
           canvas-ed-mcp --version
       - name: Smoke-test clean-source MCP protocol outside the checkout
         working-directory: ${{ runner.temp }}

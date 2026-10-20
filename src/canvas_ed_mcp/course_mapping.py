@@ -4,17 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Mapping
 
 from .config import ContentSelection, CourseConfig, CourseSource, DownloadPolicy
 from .providers.base import CourseCandidate
+from .initial import InitialSyncMode
 from .validation import validate_provider_instance
-
-
-class InitialSyncMode(str, Enum):
-    BASELINE_FROM_NOW = "baseline_from_now"
-    IMPORT_ALL = "import_all"
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -178,6 +173,7 @@ def build_mapping_plan(
                     code=candidate.code or None,
                     name=candidate.name or None,
                     term=candidate.term,
+                    initial_mode=selection.initial_mode,
                 )
             )
             mapping_initial.append(

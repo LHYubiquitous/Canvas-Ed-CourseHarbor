@@ -243,6 +243,315 @@ class SetupVerticalSliceTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("cancelled", result.stdout.strip())
 
+    def test_interactive_ed_only_persists_selected_source_mode_without_canvas_access(self) -> None:
+        result = self.run_package_code(
+            """
+            import json
+            import tempfile
+            from pathlib import Path
+            from canvas_ed_mcp.config import load_config
+            from canvas_ed_mcp.providers.base import CourseCandidate
+            from canvas_ed_mcp.setup_flow import run_setup_wizard
+
+            prompts = iter([
+                "ed", "", "env:SYNTHETIC_ED_TOKEN", "", "y", "import_all", "",
+                "y", "", "", "", "y",
+            ])
+            calls = {"secret": [], "canvas": 0, "ed": 0}
+            output = []
+            def secret_resolver(reference):
+                calls["secret"].append(reference)
+                return "synthetic-ed-secret"
+            def canvas_loader(*args):
+                calls["canvas"] += 1
+                raise AssertionError("Ed-only setup touched Canvas")
+            def ed_loader(token):
+                calls["ed"] += 1
+                assert token == "synthetic-ed-secret"
+                return (CourseCandidate(
+                    "ed", "edstem.org", "ed-7", "SYNTH1000", "Synthetic", "2099 T1"
+                ),)
+
+            with tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                path = base / "config.toml"
+                committed = run_setup_wizard(
+                    profile="review", config_path=path,
+                    input_fn=lambda prompt: next(prompts), output_fn=output.append,
+                    secret_resolver=secret_resolver,
+                    canvas_catalog_loader=canvas_loader,
+                    ed_catalog_loader=ed_loader,
+                    default_output_root=base / "Courses",
+                )
+                config = load_config(path)
+                source = config.courses[0].sources[0]
+                print(json.dumps({
+                    "committed": committed, "calls": calls,
+                    "provider": source.provider, "course_id": source.course_id,
+                    "mode": source.initial_mode.value,
+                    "content": config.courses[0].content.model_dump(),
+                    "rendered": "\\n".join(output),
+                }))
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertTrue(data["committed"])
+        self.assertEqual({"secret": ["env:SYNTHETIC_ED_TOKEN"], "canvas": 0, "ed": 1}, data["calls"])
+        self.assertEqual(("ed", "ed-7", "import_all"), (data["provider"], data["course_id"], data["mode"]))
+        self.assertTrue(data["content"]["lessons"])
+        self.assertTrue(data["content"]["resources"])
+        self.assertFalse(data["content"]["files"])
+        self.assertNotIn("synthetic-ed-secret", data["rendered"])
+        self.assertNotIn("SYNTHETIC_ED_TOKEN", data["rendered"])
+
+    def test_interactive_both_explicitly_maps_sources_and_dry_run_is_zero_write(self) -> None:
+        result = self.run_package_code(
+            """
+            import json
+            import tempfile
+            from pathlib import Path
+            from canvas_ed_mcp.providers.base import CourseCandidate
+            from canvas_ed_mcp.setup_flow import run_setup_wizard
+
+            prompts = iter([
+                "both", "https://canvas.example.edu/api/v1", "env:SYNTHETIC_CANVAS_TOKEN",
+                "", "env:SYNTHETIC_ED_TOKEN", "",
+                "y", "", "logical-synth",
+                "y", "import_all", "logical-synth",
+                "y", "SYNTH1000", "", "",
+            ])
+            calls = {"secret": [], "canvas": 0, "ed": 0}
+            output = []
+            def secret_resolver(reference):
+                calls["secret"].append(reference)
+                return "secret-for-" + reference.rsplit("_", 1)[-1]
+            def canvas_loader(base_url, token):
+                calls["canvas"] += 1
+                return (CourseCandidate(
+                    "canvas", "canvas.example.edu", "canvas-1", "SYNTH1000", "Same", "2099 T1"
+                ),)
+            def ed_loader(token):
+                calls["ed"] += 1
+                return (CourseCandidate(
+                    "ed", "edstem.org", "ed-1", "SYNTH1000", "Same", "2099 T1"
+                ),)
+
+            with tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                committed = run_setup_wizard(
+                    profile="review", config_path=base / "config.toml",
+                    input_fn=lambda prompt: next(prompts), output_fn=output.append,
+                    secret_resolver=secret_resolver,
+                    canvas_catalog_loader=canvas_loader,
+                    ed_catalog_loader=ed_loader,
+                    default_output_root=base / "Courses", dry_run=True,
+                )
+                rendered = "\\n".join(output)
+                print(json.dumps({
+                    "committed": committed, "calls": calls,
+                    "entries": list(base.iterdir()), "rendered": rendered,
+                }))
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertFalse(data["committed"])
+        self.assertEqual(1, data["calls"]["canvas"])
+        self.assertEqual(1, data["calls"]["ed"])
+        self.assertEqual([], data["entries"])
+        self.assertIn("canvas@canvas.example.edu id=canvas-1 [initial=baseline_from_now]", data["rendered"])
+        self.assertIn("ed@edstem.org id=ed-1 [initial=import_all]", data["rendered"])
+        self.assertNotIn("SYNTHETIC_CANVAS_TOKEN", data["rendered"])
+        self.assertNotIn("SYNTHETIC_ED_TOKEN", data["rendered"])
+
+    def test_setup_rejects_existing_config_before_input_or_network(self) -> None:
+        result = self.run_package_code(
+            """
+            import tempfile
+            from pathlib import Path
+            from canvas_ed_mcp.setup_flow import SetupConflictError, run_setup_wizard
+
+            def forbidden(*args):
+                raise AssertionError("existing profile reached input, secret, or network")
+            with tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / "config.toml"
+                path.write_bytes(b"existing-profile")
+                try:
+                    run_setup_wizard(
+                        profile="review", config_path=path,
+                        input_fn=forbidden, output_fn=forbidden,
+                        secret_resolver=forbidden, canvas_catalog_loader=forbidden,
+                        default_output_root=Path(temporary) / "Courses",
+                    )
+                except SetupConflictError:
+                    pass
+                else:
+                    raise AssertionError("existing profile was not rejected")
+                assert path.read_bytes() == b"existing-profile"
+                print("protected")
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("protected", result.stdout.strip())
+
+    def test_catalog_control_characters_are_rejected_before_confirmation(self) -> None:
+        result = self.run_package_code(
+            """
+            import tempfile
+            from pathlib import Path
+            from canvas_ed_mcp.providers.base import CourseCandidate
+            from canvas_ed_mcp.setup_flow import run_setup_wizard
+
+            prompts = iter(["canvas", "https://canvas.example.edu/api/v1", "env:TOKEN", ""])
+            with tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                try:
+                    run_setup_wizard(
+                        profile="review", config_path=base / "config.toml",
+                        input_fn=lambda prompt: next(prompts), output_fn=lambda value: None,
+                        secret_resolver=lambda reference: "synthetic",
+                        canvas_catalog_loader=lambda base_url, token: (CourseCandidate(
+                            "canvas", "canvas.example.edu", "1", "SAFE", "forged\\nSelect me", None
+                        ),),
+                        default_output_root=base / "Courses",
+                    )
+                except ValueError:
+                    pass
+                else:
+                    raise AssertionError("control-bearing catalog text was accepted")
+                assert not (base / "config.toml").exists()
+                print("rejected")
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("rejected", result.stdout.strip())
+
+    def test_committed_setup_reports_stable_cleanup_pending_marker(self) -> None:
+        result = self.run_package_code(
+            """
+            import tempfile
+            from pathlib import Path
+            from unittest.mock import patch
+            from canvas_ed_mcp.config import AppConfig
+            from canvas_ed_mcp.setup_flow import SetupPlan, commit_setup
+
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                plan = SetupPlan(AppConfig(profile="review", output_root=root / "Courses"), "preview")
+                output = []
+                with patch("canvas_ed_mcp.setup_flow.save_new_config", return_value=True):
+                    committed = commit_setup(
+                        plan, root / "config.toml", confirmed=True,
+                        warning_fn=output.append,
+                    )
+                assert committed
+                assert output == ["setup warning (config_cleanup_pending)"]
+                print("reported")
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("reported", result.stdout.strip())
+
+    def test_interactive_both_same_name_stays_separate_and_final_cancel_is_zero_write(self) -> None:
+        result = self.run_package_code(
+            """
+            import json
+            import tempfile
+            from pathlib import Path
+            from canvas_ed_mcp.providers.base import CourseCandidate
+            from canvas_ed_mcp.setup_flow import run_setup_wizard
+
+            prompts = iter([
+                "both", "https://canvas.example.edu/api/v1", "env:SYNTHETIC_CANVAS_TOKEN",
+                "", "env:SYNTHETIC_ED_TOKEN", "",
+                "y", "baseline_from_now", "logical-canvas",
+                "y", "import_all", "logical-ed",
+                "y", "SAME1000-Canvas", "", "",
+                "y", "SAME1000-Ed", "", "",
+                "n",
+            ])
+            calls = {"secret": [], "canvas": 0, "ed": 0}
+            output = []
+
+            def secret_resolver(reference):
+                calls["secret"].append(reference)
+                values = {
+                    "env:SYNTHETIC_CANVAS_TOKEN": "synthetic-canvas-secret",
+                    "env:SYNTHETIC_ED_TOKEN": "synthetic-ed-secret",
+                }
+                return values[reference]
+
+            def canvas_loader(base_url, token):
+                calls["canvas"] += 1
+                assert base_url == "https://canvas.example.edu/api/v1"
+                assert token == "synthetic-canvas-secret"
+                return (CourseCandidate(
+                    "canvas", "canvas.example.edu", "canvas-1", "SAME1000",
+                    "Identical Display Name", "2099 T1",
+                ),)
+
+            def ed_loader(token):
+                calls["ed"] += 1
+                assert token == "synthetic-ed-secret"
+                return (CourseCandidate(
+                    "ed", "edstem.org", "ed-1", "SAME1000",
+                    "Identical Display Name", "2099 T1",
+                ),)
+
+            with tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                committed = run_setup_wizard(
+                    profile="review",
+                    config_path=base / "config.toml",
+                    input_fn=lambda prompt: next(prompts),
+                    output_fn=output.append,
+                    secret_resolver=secret_resolver,
+                    canvas_catalog_loader=canvas_loader,
+                    ed_catalog_loader=ed_loader,
+                    default_output_root=base / "Courses",
+                )
+                print(json.dumps({
+                    "committed": committed,
+                    "calls": calls,
+                    "entries": list(base.iterdir()),
+                    "rendered": "\\n".join(output),
+                }))
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertFalse(data["committed"])
+        self.assertEqual(
+            {
+                "secret": [
+                    "env:SYNTHETIC_CANVAS_TOKEN",
+                    "env:SYNTHETIC_ED_TOKEN",
+                ],
+                "canvas": 1,
+                "ed": 1,
+            },
+            data["calls"],
+        )
+        self.assertEqual([], data["entries"])
+        self.assertIn("- logical-canvas -> SAME1000-Canvas", data["rendered"])
+        self.assertIn("- logical-ed -> SAME1000-Ed", data["rendered"])
+        self.assertIn(
+            "canvas@canvas.example.edu id=canvas-1 [initial=baseline_from_now]",
+            data["rendered"],
+        )
+        self.assertIn(
+            "ed@edstem.org id=ed-1 [initial=import_all]",
+            data["rendered"],
+        )
+        for private_value in (
+            "synthetic-canvas-secret",
+            "synthetic-ed-secret",
+            "SYNTHETIC_CANVAS_TOKEN",
+            "SYNTHETIC_ED_TOKEN",
+        ):
+            self.assertNotIn(private_value, data["rendered"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,11 +21,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, Sequence
 
+try:
+    from ci.release_gate import read_project_version
+except ModuleNotFoundError:  # direct `python ci/macos_release_matrix.py`
+    from release_gate import read_project_version
 
-EXPECTED_VERSION = "0.1.0rc1"
 BASELINE_ANCESTOR = "c305be28882dcedb3f93fd197a9218746c4d05d2"
 DEFAULT_PYTHONS = ("3.10", "3.15")
-REVIEWED_UV_VERSION = "uv 0.9.30"
+REVIEWED_UV_VERSION = "uv 0.11.28"
 _PYTHON_SELECTOR = re.compile(r"3\.(?:10|11|12|13|14|15)\Z")
 PRIVATE_SENTINELS = (
     "credentials_local.json",
@@ -260,6 +263,7 @@ def _run_installed_smoke(
 
 def run_matrix(args: argparse.Namespace) -> tuple[MatrixResult, Path]:
     root = Path(__file__).resolve().parents[1]
+    expected_version = read_project_version(root)
     report_root = (
         args.report_dir.resolve()
         if args.report_dir
@@ -353,7 +357,7 @@ def run_matrix(args: argparse.Namespace) -> tuple[MatrixResult, Path]:
                 ),
                 (
                     f"Python {version} version contract",
-                    (_venv_python(environment_root), "-B", "-c", f"import canvas_ed_mcp; assert canvas_ed_mcp.__version__ == '{EXPECTED_VERSION}'"),
+                    (_venv_python(environment_root), "-B", "-c", f"import canvas_ed_mcp; assert canvas_ed_mcp.__version__ == '{expected_version}'"),
                     outside,
                 ),
                 (
@@ -416,14 +420,12 @@ def run_matrix(args: argparse.Namespace) -> tuple[MatrixResult, Path]:
                     root,
                     "--output-dir",
                     destination,
-                    "--version",
-                    EXPECTED_VERSION,
                     "--source-date-epoch",
                     epoch,
                 ),
             ):
                 return finish("FAIL")
-        source_name = f"canvas-ed-mcp-{EXPECTED_VERSION}-source.tar.gz"
+        source_name = f"canvas-ed-mcp-{expected_version}-source.tar.gz"
         source_a = release_a / source_name
         source_b = release_b / source_name
         if source_a.read_bytes() != source_b.read_bytes():

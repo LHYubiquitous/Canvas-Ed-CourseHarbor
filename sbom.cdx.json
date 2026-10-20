@@ -2,21 +2,21 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:58eb5914-f59d-40c6-aebb-fac517bb07cf",
+  "serialNumber": "urn:uuid:8ce6816b-031f-4f20-b553-3fc4dabec429",
   "metadata": {
-    "timestamp": "2026-10-13T15:43:55.284154200Z",
+    "timestamp": "2026-10-20T09:42:02.939063900Z",
     "tools": [
       {
         "vendor": "Astral Software Inc.",
         "name": "uv",
-        "version": "0.9.30"
+        "version": "0.11.28"
       }
     ],
     "component": {
       "type": "library",
-      "bom-ref": "canvas-ed-mcp-1@0.1.0rc1",
+      "bom-ref": "canvas-ed-mcp-1@0.2.0rc11",
       "name": "canvas-ed-mcp",
-      "version": "0.1.0rc1",
+      "version": "0.2.0rc11",
       "properties": [
         {
           "name": "uv:package:is_project_root",
@@ -637,12 +637,10 @@
   ],
   "dependencies": [
     {
-      "ref": "annotated-doc-2@0.0.5",
-      "dependsOn": []
+      "ref": "annotated-doc-2@0.0.5"
     },
     {
-      "ref": "annotated-types-3@0.8.0",
-      "dependsOn": []
+      "ref": "annotated-types-3@0.8.0"
     },
     {
       "ref": "anyio-4@4.15.1",
@@ -653,12 +651,10 @@
       ]
     },
     {
-      "ref": "attrs-5@26.1.0",
-      "dependsOn": []
+      "ref": "attrs-5@26.1.0"
     },
     {
-      "ref": "backports-tarfile-6@1.2.0",
-      "dependsOn": []
+      "ref": "backports-tarfile-6@1.2.0"
     },
     {
       "ref": "beautifulsoup4-7@4.15.0",
@@ -669,8 +665,7 @@
       ]
     },
     {
-      "ref": "certifi-8@2026.7.22",
-      "dependsOn": []
+      "ref": "certifi-8@2026.7.22"
     },
     {
       "ref": "cffi-9@2.1.1",
@@ -679,16 +674,13 @@
       ]
     },
     {
-      "ref": "charset-normalizer-10@3.5.2",
-      "dependsOn": []
+      "ref": "charset-normalizer-10@3.5.2"
     },
     {
-      "ref": "click-11@8.5.0",
-      "dependsOn": []
+      "ref": "click-11@8.5.0"
     },
     {
-      "ref": "colorama-12@0.4.6",
-      "dependsOn": []
+      "ref": "colorama-12@0.4.6"
     },
     {
       "ref": "cryptography-13@50.0.2",
@@ -729,8 +721,7 @@
       ]
     },
     {
-      "ref": "h11-17@0.16.0",
-      "dependsOn": []
+      "ref": "h11-17@0.16.0"
     },
     {
       "ref": "httpcore-18@1.0.9",
@@ -749,12 +740,10 @@
       ]
     },
     {
-      "ref": "httpx-sse-20@0.4.3",
-      "dependsOn": []
+      "ref": "httpx-sse-20@0.4.3"
     },
     {
-      "ref": "idna-21@3.20",
-      "dependsOn": []
+      "ref": "idna-21@3.20"
     },
     {
       "ref": "importlib-metadata-22@9.0.1",
@@ -763,8 +752,7 @@
       ]
     },
     {
-      "ref": "iniconfig-23@2.3.1",
-      "dependsOn": []
+      "ref": "iniconfig-23@2.3.1"
     },
     {
       "ref": "jaraco-classes-24@3.4.0",
@@ -785,8 +773,7 @@
       ]
     },
     {
-      "ref": "jeepney-27@0.9.0",
-      "dependsOn": []
+      "ref": "jeepney-27@0.9.0"
     },
     {
       "ref": "jsonschema-28@4.26.0",
@@ -837,8 +824,7 @@
       ]
     },
     {
-      "ref": "more-itertools-32@11.1.0",
-      "dependsOn": []
+      "ref": "more-itertools-32@11.1.0"
     },
     {
       "ref": "opentelemetry-api-33@1.45.1",
@@ -847,24 +833,19 @@
       ]
     },
     {
-      "ref": "packaging-34@26.3",
-      "dependsOn": []
+      "ref": "packaging-34@26.3"
     },
     {
-      "ref": "platformdirs-35@4.12.4",
-      "dependsOn": []
+      "ref": "platformdirs-35@4.12.4"
     },
     {
-      "ref": "platformdirs-36@4.13.0",
-      "dependsOn": []
+      "ref": "platformdirs-36@4.13.0"
     },
     {
-      "ref": "pluggy-37@1.6.0",
-      "dependsOn": []
+      "ref": "pluggy-37@1.6.0"
     },
     {
-      "ref": "pycparser-38@3.11",
-      "dependsOn": []
+      "ref": "pycparser-38@3.11"
     },
     {
       "ref": "pydantic-39@2.14.1",
@@ -890,8 +871,7 @@
       ]
     },
     {
-      "ref": "pygments-42@2.21.0",
-      "dependsOn": []
+      "ref": "pygments-42@2.21.0"
     },
     {
       "ref": "pyjwt-43@2.15.1",
@@ -919,20 +899,16 @@
       ]
     },
     {
-      "ref": "python-dotenv-46@1.2.4",
-      "dependsOn": []
+      "ref": "python-dotenv-46@1.2.4"
     },
     {
-      "ref": "python-multipart-47@0.0.32",
-      "dependsOn": []
+      "ref": "python-multipart-47@0.0.32"
     },
     {
-      "ref": "pywin32-48@312",
-      "dependsOn": []
+      "ref": "pywin32-48@312"
     },
     {
-      "ref": "pywin32-ctypes-49@0.2.3",
-      "dependsOn": []
+      "ref": "pywin32-ctypes-49@0.2.3"
     },
     {
       "ref": "referencing-50@0.37.0",
@@ -959,12 +935,10 @@
       ]
     },
     {
-      "ref": "rpds-py-53@0.30.0",
-      "dependsOn": []
+      "ref": "rpds-py-53@0.30.0"
     },
     {
-      "ref": "rpds-py-54@2026.9.1",
-      "dependsOn": []
+      "ref": "rpds-py-54@2026.9.1"
     },
     {
       "ref": "secretstorage-55@3.5.0",
@@ -974,16 +948,13 @@
       ]
     },
     {
-      "ref": "six-56@1.17.0",
-      "dependsOn": []
+      "ref": "six-56@1.17.0"
     },
     {
-      "ref": "soupsieve-57@2.10",
-      "dependsOn": []
+      "ref": "soupsieve-57@2.10"
     },
     {
-      "ref": "soupsieve-58@3.0.3",
-      "dependsOn": []
+      "ref": "soupsieve-58@3.0.3"
     },
     {
       "ref": "sse-starlette-59@3.5.0",
@@ -1008,16 +979,13 @@
       ]
     },
     {
-      "ref": "tomli-62@2.5.0",
-      "dependsOn": []
+      "ref": "tomli-62@2.5.0"
     },
     {
-      "ref": "tomli-w-63@1.2.0",
-      "dependsOn": []
+      "ref": "tomli-w-63@1.2.0"
     },
     {
-      "ref": "typing-extensions-64@4.16.0",
-      "dependsOn": []
+      "ref": "typing-extensions-64@4.16.0"
     },
     {
       "ref": "typing-inspection-65@0.4.4",
@@ -1026,12 +994,10 @@
       ]
     },
     {
-      "ref": "tzdata-66@2026.5",
-      "dependsOn": []
+      "ref": "tzdata-66@2026.5"
     },
     {
-      "ref": "urllib3-67@2.8.0",
-      "dependsOn": []
+      "ref": "urllib3-67@2.8.0"
     },
     {
       "ref": "uvicorn-68@0.54.0",
@@ -1042,8 +1008,7 @@
       ]
     },
     {
-      "ref": "zipp-69@4.1.1",
-      "dependsOn": []
+      "ref": "zipp-69@4.1.1"
     }
   ]
 }

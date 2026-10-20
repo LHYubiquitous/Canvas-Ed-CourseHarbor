@@ -3,65 +3,171 @@
 [![Python 3.10–3.15](https://img.shields.io/badge/Python-3.10%E2%80%933.15-3776AB)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Portable, local-first, read-only MCP access to explicitly configured Canvas and Ed
-courses. Version `0.1.0rc1` is a release candidate: it is suitable for reviewed local
-testing, but it has not been published to PyPI or released from a public repository.
+Canvas Ed MCP is a local desktop tool for students who use Canvas, Ed, or both. It
+downloads course material into folders you choose, creates weekly and semester due
+date reports, and provides read-only MCP access to configured courses.
 
-## Release-candidate scope
+`0.2.0rc11` is the current GitHub prerelease. Download the reviewed wheel from the
+[Releases page](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases).
+The package is not published to PyPI.
+
+## What it does
 
 The installed package provides:
 
-- profile-isolated configuration, state, cache, and log paths through `platformdirs`;
-- OS-keyring references by default, with process-scoped environment references for
-  reviewed headless use;
-- configurable HTTPS Canvas instances with same-origin pagination guards;
-- an isolated Ed adapter with schema-drift handling and credential-safe asset fetches;
-- explicit Canvas↔Ed source mapping—matching names never auto-select a course;
-- a provider-aware read-only MCP server whose tool surface follows enabled providers;
-- optional, disabled-by-default Gradescope read-only tools;
-- no-clobber storage, state-v4, policy, locking, and reconfiguration primitives.
+- an English numbered terminal app and native Windows, macOS, and Linux launchers;
+- incremental Canvas and Ed material sync with dry-run preview and no-clobber storage;
+- weekly TXT and semester Markdown due reports grouped in Sydney time;
+- separate profiles for different semesters, accounts, and output folders;
+- OS Keychain/Credential Manager references instead of tokens in configuration;
+- explicit Canvas↔Ed course mapping—matching names never select a course for you;
+- a read-only MCP server whose tools follow the providers enabled in the profile;
+- optional Gradescope due-date support, disabled until explicitly configured.
 
-The portable sync orchestrator and interactive Ed/both setup are not connected yet.
-`course-sync` is therefore a safe reserved command and does not download anything.
-The historical 49-tool/write-capable server and personal sync scripts are retained
-only in the private development repository; they are not part of the public source
-candidate, wheel, or sdist.
+The portable sync orchestrator supports explicitly configured Canvas and Ed sources.
+Interactive setup supports Canvas-only, Ed-only, and explicit Canvas+Ed mappings;
+interactive reconfiguration retains existing sources by default and requires explicit
+confirmation before detaching or adding a source. `course-sync` is a safe compatibility
+command and does not download anything.
+The historical write-capable server and personal scripts are not included in the
+public source candidate, wheel, or sdist.
 
-## Install from a reviewed checkout or wheel
+## 1. Install
 
-Use an isolated environment and do not install as administrator/root:
+Download `canvas_ed_mcp-0.2.0rc11-py3-none-any.whl` from the release and place it in
+a new folder. Python 3.10–3.15 is supported. Keep this folder: generated launchers
+point to the virtual environment inside it.
+
+### Windows PowerShell
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc11-py3-none-any.whl
+.\.venv\Scripts\canvas-ed-mcp.exe --version
+```
+
+If `py` is unavailable, replace it with the full path to an installed Python.
+Activate the environment with:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### macOS or Linux
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc11-py3-none-any.whl
+source ./.venv/bin/activate
+canvas-ed-mcp --version
+```
+
+For installation from a reviewed source checkout, replace the wheel path with `.`.
+More update, rollback, and Linux keyring details are in
+[Cross-platform installation](docs/INSTALLATION.md).
+The remaining examples assume the virtual environment is active. You can instead use
+the full `.venv` executable path shown above.
+
+## 2. Store credentials
+
+Check the operating-system keyring before setup:
 
 ```text
-python -m venv .venv
-python -m pip install .
-canvas-ed-mcp --version
 canvas-ed-mcp doctor --show-paths
 ```
 
-See [Cross-platform installation](docs/INSTALLATION.md) for Windows, macOS, Linux,
-MCP-host, update, and rollback guidance. See [Authentication safety](docs/AUTHENTICATION.md)
-before creating or storing a Canvas or Ed token.
+Store only the providers you use. Each command prompts for the value without placing
+it in command history or the configuration file:
 
-## Configure safely
+```text
+python -m keyring set canvas-ed-mcp/default canvas
+python -m keyring set canvas-ed-mcp/default ed
+```
 
-Run setup for a reviewed Canvas profile:
+Use these references when the setup wizard asks for credentials:
+
+```text
+keyring:canvas-ed-mcp/default/canvas
+keyring:canvas-ed-mcp/default/ed
+```
+
+See [Authentication](docs/AUTHENTICATION.md) for Canvas personal access tokens, Ed
+session tokens, revocation, and headless environment references.
+
+## 3. Create your profile
+
+Preview a new Canvas, Ed, or combined profile:
 
 ```text
 canvas-ed-mcp setup --profile default --dry-run
+```
+
+The wizard shows every discovered course and asks which ones to include. Choose
+`baseline_from_now` to record the current state and download only later changes, or
+`import_all` to download the selected existing material on the first real sync.
+When the preview is correct, create the profile:
+
+```text
 canvas-ed-mcp setup --profile default
 ```
 
-Setup is no-by-default: each platform and course must be explicitly selected and a
-final preview confirmed. Configuration stores credential references such as
-`keyring:canvas-ed-mcp/default/canvas`, never credential values.
+To add, remove, or change courses later, preview and then commit the configuration:
 
-The portable server is launched with:
+```text
+canvas-ed-mcp configure --profile default --dry-run
+canvas-ed-mcp configure --profile default
+```
+
+Removing a source from configuration keeps its downloaded files and historical state.
+
+## 4. Daily use
+
+After setup or a configuration change, native launchers are installed in
+`<output root>/Canvas Ed MCP Launchers`. Double-click `canvas_ed_app` for the numbered
+menu, or use `course_material_sync`, `this_week_due`, and `this_semester_due` directly.
+Existing edited launchers are never overwritten; a changed managed replacement is
+written with a `.new` suffix for review.
+
+| Launcher | Result |
+|---|---|
+| `canvas_ed_app` | Opens the numbered menu |
+| `course_material_sync` | Updates every configured course |
+| `this_week_due` | Creates `Due Dates/this-week-due.txt` |
+| `this_semester_due` | Creates a teaching-week Markdown checklist |
+| `configure_courses` | Reviews course and policy changes |
+| `health_check` | Shows package, profile, path, and keyring status |
+| `open_course_folder` | Opens the configured output folder |
+
+Due reports are create-only: changed content receives a numbered revision instead of
+overwriting the previous report. Semester reports preserve checked boxes and notes
+attached to stable item markers.
+
+## 5. Command-line and MCP use
+
+The same functions are available as short CLI commands:
+
+```text
+canvas-ed-mcp sync --profile default --dry-run
+canvas-ed-mcp sync --profile default
+canvas-ed-mcp due week --profile default
+canvas-ed-mcp due semester --profile default
+canvas-ed-mcp configure --profile default --dry-run
+canvas-ed-mcp launchers install --profile default
+canvas-ed-mcp open-course-folder --profile default
+```
+
+Canvas and Ed due dates work from the confirmed course mappings. Optional Gradescope
+and local Unit Outline inputs require exact mappings in schema-v2 configuration; the
+tool never guesses that similarly named courses or assessments are identical.
+
+Launch the MCP server with:
 
 ```text
 canvas-ed-mcp serve --profile default
 ```
 
-Its MCP tools are limited to the configured read-only surface:
+Use the absolute installed executable in the MCP host with arguments
+`serve --profile default`. Its tools are limited to the configured read-only surface:
 
 - `server_status`
 - `canvas_list_configured_courses` when Canvas is enabled
@@ -71,18 +177,27 @@ Its MCP tools are limited to the configured read-only surface:
 
 Disabled providers resolve no credential and make no network request.
 
-## Security and privacy
+To preview one course instead of the whole profile:
 
-- Never place API tokens, passwords, session cookies, signed URLs, or course material
-  in source control, MCP JSON, screenshots, issues, or support logs.
-- Treat personal Canvas/Ed tokens as password-equivalent and revoke them remotely
-  before deleting their local keyring entries.
-- Course access does not grant redistribution rights. Real course content is excluded
-  from every distribution and test fixture.
-- The current private development repository contains legacy compatibility history and
-  must not be made public. A future public repository must start from the audited,
-  clean-history source archive.
-- Report vulnerabilities using the process in [SECURITY.md](SECURITY.md).
+```text
+canvas-ed-mcp sync --profile default --course LOGICAL_COURSE_KEY --dry-run
+```
+
+Removing `--dry-run` writes local state and course output. It never writes to Canvas
+or Ed. `course-sync` is a compatibility placeholder; use `canvas-ed-mcp sync`.
+
+## Known limitations and privacy
+
+- Canvas course-wide Files access depends on instance permissions. Module-linked
+  pages and files can still work when the broader Files endpoint returns `403`.
+- Ed integration uses an unofficial, schema-sensitive API and reports partial items
+  when the response shape changes.
+- Gradescope due dates require the optional `gradescope` extra and explicit mapping.
+- Native owner-device Linux keyring testing is still `NOT_RUN`.
+- Tokens belong in the OS keyring, not source control or MCP host configuration.
+- Course access does not grant redistribution rights for downloaded material.
+
+Report software vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ## Verification and release materials
 
@@ -110,13 +225,12 @@ python -B -m unittest discover -s tests -v
 
 Do not add live API calls to the default test suite.
 
-## 中文说明
+## 中文速览
 
-这是一个面向本地使用的 Canvas + Ed 只读 MCP release candidate。平台和课程必须逐项确认；
-配置只保存 keyring/environment reference，不保存 token。当前 portable downloader 尚未接线，
-`course-sync` 不会下载文件。私有开发仓库中的旧版写操作 MCP、个人同步脚本和历史不会进入公开候选包。
-安装、凭据、验证边界请分别阅读 `docs/INSTALLATION.md`、`docs/AUTHENTICATION.md` 和
-`docs/TESTING_AND_OPERATIONS.md`。
+安装 wheel 后，先把 Canvas/Ed token 写入系统钥匙串，再运行
+`canvas-ed-mcp setup --profile default`。配置成功后，直接双击输出目录中的
+`canvas_ed_app`，即可使用课程同步、本周截止日期和全学期清单。同步只写入你选择的
+本地目录；MCP 服务不包含远端写操作。
 
 ## Attribution and license
 

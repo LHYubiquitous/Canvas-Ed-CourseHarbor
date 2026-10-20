@@ -10,7 +10,6 @@ import hashlib
 import html
 import ipaddress
 import json
-import logging
 import mimetypes
 import re
 import xml.etree.ElementTree as ET
@@ -28,7 +27,7 @@ from canvas_ed_mcp.renderers.html import (
     RenderedHtml,
     render_page_html,
 )
-from canvas_ed_mcp.secrets import redact_text
+from canvas_ed_mcp.secrets import install_http_redaction_filters
 from canvas_ed_mcp.sync.model import RemoteItem, RemoteKind, SourceKey
 
 from .base import (
@@ -43,6 +42,8 @@ from .base import (
 
 
 DEFAULT_ED_BASE_URL = "https://edstem.org/api"
+_EDSTEM_HOST = "edstem.org"
+_DEFAULT_ED_STATIC_ASSET_HOSTS = frozenset({"static.au.edusercontent.com"})
 _LESSON_SIGNATURE_FIELDS = (
     "id",
     "title",
@@ -78,36 +79,6 @@ _VOLATILE_QUERY_NAMES = frozenset(
         "verifier",
     }
 )
-_HTTP_LOGGER_NAMES = (
-    "httpx",
-    "httpcore.connection",
-    "httpcore.connection_pool",
-    "httpcore.http11",
-    "httpcore.http2",
-    "httpcore.proxy",
-    "httpcore.socks",
-    "httpcore.socks_proxy",
-)
-
-
-class _HttpRedactionFilter(logging.Filter):
-    """Redact dependency messages without suppressing unrelated diagnostics."""
-
-    _canvas_ed_filter = True
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact_text(record.getMessage())
-        record.args = ()
-        return True
-
-
-def _install_http_redaction_filters() -> None:
-    for name in _HTTP_LOGGER_NAMES:
-        logger = logging.getLogger(name)
-        if not any(getattr(item, "_canvas_ed_filter", False) for item in logger.filters):
-            logger.addFilter(_HttpRedactionFilter())
-
-
 def _canonical_instance(parsed: Any) -> str:
     host = parsed.hostname.casefold()
     return host if parsed.port in {None, 443} else f"{host}:{parsed.port}"
@@ -188,6 +159,20 @@ def _optional_text(value: object, label: str, *, allow_integer: bool = False) ->
     if any(ord(char) < 32 or ord(char) == 127 for char in result):
         raise ProviderError("schema_drift", f"Ed {label} is invalid")
     return result
+
+
+def _optional_markup(value: object, label: str) -> str:
+    """Accept normal HTML formatting whitespace while rejecting unsafe controls."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ProviderError("schema_drift", f"Ed {label} is invalid")
+    if any(
+        (ord(char) < 32 and char not in "\t\n\r") or ord(char) == 127
+        for char in value
+    ):
+        raise ProviderError("schema_drift", f"Ed {label} is invalid")
+    return value
 
 
 def _ed_xml(value: object) -> str:
@@ -280,7 +265,7 @@ def _lesson_body(lesson: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
         title = html.escape(slide_title or f"Slide {position}")
         display_type = slide_type
         if slide_type == "html":
-            body = _optional_text(slide.get("html"), "lesson slide HTML")
+            body = _optional_markup(slide.get("html"), "lesson slide HTML")
         elif slide_type == "pdf":
             file_url = _optional_text(slide.get("file_url"), "lesson PDF URL")
             if file_url:
@@ -363,11 +348,13 @@ class EdProvider:
             if any(asset_client.event_hooks.values()):
                 raise ValueError("Ed asset client cannot have event hooks")
 
-        configured_asset_hosts = (
-            frozenset({parsed.hostname})
-            if allowed_asset_hosts is None
-            else allowed_asset_hosts
-        )
+        if allowed_asset_hosts is None:
+            default_hosts = {parsed.hostname}
+            if parsed.hostname == _EDSTEM_HOST:
+                default_hosts.update(_DEFAULT_ED_STATIC_ASSET_HOSTS)
+            configured_asset_hosts = frozenset(default_hosts)
+        else:
+            configured_asset_hosts = allowed_asset_hosts
         if not isinstance(configured_asset_hosts, frozenset) or not configured_asset_hosts:
             raise ValueError("allowed_asset_hosts must be a non-empty frozenset")
         normalized_asset_hosts: set[str] = set()
@@ -381,7 +368,7 @@ class EdProvider:
                 raise ValueError("allowed asset hosts must be canonical hostnames")
             normalized_asset_hosts.add(host)
 
-        _install_http_redaction_filters()
+        install_http_redaction_filters()
         self.base_url = normalized
         self.instance = _canonical_instance(parsed)
         self._headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
@@ -452,6 +439,70 @@ class EdProvider:
                 )
             )
         return tuple(output)
+
+    def list_due_items(
+        self,
+        course_id: str,
+        *,
+        logical_course_key: str,
+        course_label: str,
+    ):
+        """Return dated Ed lessons without inventing unavailable point values."""
+        from datetime import datetime
+
+        from ..due.model import (
+            DueBatch,
+            DueCoverageStatus,
+            DueIssue,
+            DueItem,
+            DuePrecision,
+            DueSourceKey,
+        )
+
+        payload = self._json(f"/courses/{quote(course_id, safe='')}/lessons")
+        lessons = payload.get("lessons")
+        if not isinstance(lessons, list):
+            raise ProviderError("schema_drift", "Ed lessons response has no lesson list")
+        items: list[DueItem] = []
+        issues: list[DueIssue] = []
+        for index, raw in enumerate(lessons):
+            try:
+                if not isinstance(raw, dict) or raw.get("id") is None:
+                    raise ValueError
+                raw_due = raw.get("effective_due_at") or raw.get("due_at")
+                if raw_due is None:
+                    continue
+                if not isinstance(raw_due, str):
+                    raise ValueError
+                due_at = datetime.fromisoformat(raw_due.replace("Z", "+00:00"))
+                if due_at.tzinfo is None:
+                    raise ValueError
+                title = raw.get("title") or raw.get("name")
+                if not isinstance(title, str) or not title.strip():
+                    raise ValueError
+                items.append(
+                    DueItem(
+                        key=DueSourceKey(
+                            "ed", self.instance, course_id, "lesson",
+                            _required_id(raw["id"], "lesson"),
+                        ),
+                        logical_course_key=logical_course_key,
+                        course_label=course_label,
+                        title=title.strip(),
+                        due_at=due_at,
+                        precision=DuePrecision.DATETIME,
+                    )
+                )
+            except ValueError:
+                issues.append(DueIssue("item_schema_drift", item_index=index))
+        return DueBatch(
+            provider="ed",
+            instance=self.instance,
+            course_id=course_id,
+            coverage=DueCoverageStatus.PARTIAL if issues else DueCoverageStatus.COMPLETE,
+            items=tuple(items),
+            issues=tuple(issues),
+        )
 
     def list_items(
         self,

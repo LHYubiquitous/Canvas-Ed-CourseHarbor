@@ -14,12 +14,20 @@ from pathlib import Path, PurePosixPath
 from typing import Mapping, Sequence
 from urllib.parse import parse_qsl, urlsplit
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 only
+    import tomli as tomllib  # type: ignore[no-redef]
+
 
 class ReleaseAuditError(RuntimeError):
     """Raised without reflecting the private content that caused a failure."""
 
 
 _MANIFEST_PATH = "release-manifest.txt"
+_VERSION_RE = re.compile(
+    r"[0-9]+(?:\.[0-9]+)*(?:(?:a|b|rc)[0-9]+)?(?:\.post[0-9]+)?(?:\.dev[0-9]+)?\Z"
+)
 _REQUIRED_PUBLIC_FILES = frozenset(
     {
         ".github/ISSUE_TEMPLATE/bug_report.yml",
@@ -46,6 +54,8 @@ _PUBLIC_PREFIXES = ("ci/", "docs/", "src/", "tests/")
 _PUBLIC_SUFFIXES = frozenset({".json", ".md", ".py", ".toml", ".yml"})
 _EXCLUDED_PUBLIC_FILES = frozenset(
     {
+        "docs/CANVAS_SYNC_MANUAL_TEST.md",
+        "docs/ED_SYNC_MANUAL_TEST.md",
         "tests/test_mcp_config.py",
         "tests/test_sync_output.py",
     }
@@ -122,6 +132,31 @@ class SourceArchiveResult:
     archive: Path
     sha256: str
     files: tuple[str, ...]
+
+
+def read_project_version(root: str | Path) -> str:
+    """Read the safe project version and require an exact runtime-version match."""
+    repository = Path(root)
+    try:
+        project = tomllib.loads((repository / "pyproject.toml").read_text("utf-8"))
+        version = project["project"]["version"]
+        package_init = (repository / "src/canvas_ed_mcp/__init__.py").read_text(
+            "utf-8"
+        )
+    except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError) as exc:
+        raise ReleaseAuditError(
+            "public source audit failed: unreadable_project_version"
+        ) from exc
+    if not isinstance(version, str) or not _VERSION_RE.fullmatch(version):
+        raise ReleaseAuditError("public source audit failed: invalid_version")
+    match = re.search(
+        r'^__version__\s*=\s*["\']([^"\']+)["\']\s*$',
+        package_init,
+        re.MULTILINE,
+    )
+    if match is None or match.group(1) != version:
+        raise ReleaseAuditError("public source audit failed: version_mismatch")
+    return version
 
 
 def _validate_relative_path(relative: str) -> PurePosixPath:
@@ -286,7 +321,7 @@ def build_source_archive(
 ) -> SourceArchiveResult:
     """Build a deterministic gzip-compressed tar archive from audited files."""
     repository = Path(root)
-    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)*(?:(?:a|b|rc)[0-9]+)?(?:\.post[0-9]+)?(?:\.dev[0-9]+)?", version):
+    if not _VERSION_RE.fullmatch(version):
         raise ReleaseAuditError("public source audit failed: invalid_version")
     expected = select_public_files(repository, require_complete=require_complete)
     selected = tuple(files) if files is not None else expected
@@ -337,15 +372,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--version", required=True)
+    parser.add_argument("--version")
     parser.add_argument("--source-date-epoch", type=int, required=True)
     args = parser.parse_args(argv)
 
-    name = f"canvas-ed-mcp-{args.version}-source.tar.gz"
+    project_version = read_project_version(args.root)
+    if args.version is not None and args.version != project_version:
+        raise ReleaseAuditError("public source audit failed: version_mismatch")
+    name = f"canvas-ed-mcp-{project_version}-source.tar.gz"
     result = build_source_archive(
         args.root,
         args.output_dir / name,
-        version=args.version,
+        version=project_version,
         source_date_epoch=args.source_date_epoch,
     )
     manifest = {
@@ -353,7 +391,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "files": list(result.files),
         "sha256": result.sha256,
         "source_date_epoch": args.source_date_epoch,
-        "version": args.version,
+        "version": project_version,
     }
     manifest_path = args.output_dir / f"{name}.manifest.json"
     manifest_path.write_text(

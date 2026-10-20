@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -13,10 +14,14 @@ from canvas_ed_mcp.paths import validate_profile_name
 
 from .locking import LockScope, SyncLock
 from .model import PreviousSource, RemoteKind, SourceKey, StoredFile
+from .policy import PolicySkipReason
 
 
-CURRENT_STATE_SCHEMA = 4
-_ROOT_FIELDS = frozenset({"schema_version", "profile", "output_root", "sources"})
+CURRENT_STATE_SCHEMA = 5
+_ROOT_FIELDS = frozenset({
+    "schema_version", "profile", "output_root", "sources", "initialized_sources", "policy_skips"
+})
+_V4_ROOT_FIELDS = frozenset({"schema_version", "profile", "output_root", "sources"})
 _SOURCE_FIELDS = frozenset({"key", "signature", "stored_file", "retry_required"})
 _KEY_FIELDS = frozenset(
     {"provider", "instance", "course_id", "kind", "remote_id"}
@@ -24,6 +29,11 @@ _KEY_FIELDS = frozenset(
 _FILE_FIELDS = frozenset(
     {"output_relative_path", "written_sha256", "managed_by_sync"}
 )
+_INITIALIZED_FIELDS = frozenset({"course_key", "provider", "instance", "course_id"})
+_POLICY_SKIP_FIELDS = frozenset(
+    {"course_key", "key", "signature", "reason", "policy_fingerprint"}
+)
+_LEGACY_POLICY_SKIP_FIELDS = frozenset({"course_key", "key", "signature", "reason"})
 
 
 class StateLoadError(RuntimeError):
@@ -60,13 +70,56 @@ def _source_sort_key(source: PreviousSource) -> tuple[str, str, str, str, str]:
     )
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class InitializedSource:
+    """Durable source-level baseline checkpoint, including empty discovery."""
+
+    course_key: str
+    provider: str
+    instance: str
+    course_id: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.course_key, str) or not self.course_key.strip():
+            raise ValueError("course_key must be a non-empty string")
+        probe = SourceKey(self.provider, self.instance, self.course_id, RemoteKind.FILE, "checkpoint")
+        del probe
+
+
+@dataclass(frozen=True, slots=True)
+class PolicySkipState:
+    """A skipped revision kept separate from managed-file ownership."""
+
+    course_key: str
+    key: SourceKey
+    signature: str
+    reason: PolicySkipReason
+    policy_fingerprint: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.course_key, str) or not self.course_key.strip():
+            raise ValueError("course_key must be a non-empty string")
+        if not isinstance(self.key, SourceKey):
+            raise ValueError("key must be a SourceKey")
+        if not isinstance(self.signature, str) or not self.signature.strip():
+            raise ValueError("signature must be a non-empty string")
+        if not isinstance(self.reason, PolicySkipReason):
+            raise ValueError("reason must be a PolicySkipReason")
+        if self.policy_fingerprint is not None and not re.fullmatch(
+            r"[0-9a-f]{64}", self.policy_fingerprint
+        ):
+            raise ValueError("policy_fingerprint must be a lowercase SHA-256 digest")
+
+
 @dataclass(frozen=True, slots=True)
 class SyncState:
-    """Immutable v4 state for exactly one profile and canonical output root."""
+    """Immutable v5 state for exactly one profile and canonical output root."""
 
     profile: str
     output_root: Path
     sources: tuple[PreviousSource, ...]
+    initialized_sources: tuple[InitializedSource, ...] = ()
+    policy_skips: tuple[PolicySkipState, ...] = ()
     schema_version: int = field(default=CURRENT_STATE_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
@@ -84,11 +137,27 @@ class SyncState:
             keys.append(source.key)
         if len(keys) != len(set(keys)):
             raise ValueError("state cannot contain duplicate source identities")
+        if not isinstance(self.initialized_sources, tuple) or not all(
+            isinstance(item, InitializedSource) for item in self.initialized_sources
+        ):
+            raise ValueError("initialized_sources must be an immutable tuple")
+        if len(self.initialized_sources) != len(set(self.initialized_sources)):
+            raise ValueError("state cannot contain duplicate initialized sources")
+        if not isinstance(self.policy_skips, tuple) or not all(
+            isinstance(item, PolicySkipState) for item in self.policy_skips
+        ):
+            raise ValueError("policy_skips must be an immutable tuple")
+        skip_keys = [(item.course_key, item.key) for item in self.policy_skips]
+        if len(skip_keys) != len(set(skip_keys)):
+            raise ValueError("state cannot contain duplicate policy skips")
 
     def previous_for(self, key: SourceKey) -> PreviousSource | None:
         if not isinstance(key, SourceKey):
             raise ValueError("key must be a SourceKey")
         return next((source for source in self.sources if source.key == key), None)
+
+    def initialized_for(self, *, course_key: str, provider: str, instance: str, course_id: str) -> bool:
+        return InitializedSource(course_key, provider, instance, course_id) in self.initialized_sources
 
 
 def new_state(*, profile: str, output_root: Path) -> SyncState:
@@ -136,6 +205,25 @@ def _source_to_document(source: PreviousSource) -> dict[str, object]:
     }
 
 
+def _initialized_to_document(source: InitializedSource) -> dict[str, str]:
+    return {
+        "course_key": source.course_key,
+        "provider": source.provider,
+        "instance": source.instance,
+        "course_id": source.course_id,
+    }
+
+
+def _policy_skip_to_document(skip: PolicySkipState) -> dict[str, object]:
+    return {
+        "course_key": skip.course_key,
+        "key": _source_to_document(PreviousSource(skip.key, skip.signature))["key"],
+        "signature": skip.signature,
+        "reason": skip.reason.value,
+        "policy_fingerprint": skip.policy_fingerprint,
+    }
+
+
 def _state_bytes(state: SyncState) -> bytes:
     if not isinstance(state, SyncState):
         raise ValueError("state must be a SyncState")
@@ -146,6 +234,14 @@ def _state_bytes(state: SyncState) -> bytes:
         "sources": [
             _source_to_document(source)
             for source in sorted(state.sources, key=_source_sort_key)
+        ],
+        "initialized_sources": [
+            _initialized_to_document(source)
+            for source in sorted(state.initialized_sources)
+        ],
+        "policy_skips": [
+            _policy_skip_to_document(skip)
+            for skip in sorted(state.policy_skips, key=lambda item: (item.course_key, _source_sort_key(PreviousSource(item.key, item.signature))))
         ],
     }
     return (
@@ -191,6 +287,35 @@ def _parse_source(value: object) -> PreviousSource:
     )
 
 
+def _parse_key(value: object) -> SourceKey:
+    key_data = _require_object(value, "source key")
+    _require_exact_fields(key_data, _KEY_FIELDS, "source key")
+    return SourceKey(
+        provider=key_data["provider"], instance=key_data["instance"],
+        course_id=key_data["course_id"], kind=RemoteKind(key_data["kind"]),
+        remote_id=key_data["remote_id"],
+    )
+
+
+def _parse_initialized(value: object) -> InitializedSource:
+    data = _require_object(value, "initialized source")
+    _require_exact_fields(data, _INITIALIZED_FIELDS, "initialized source")
+    return InitializedSource(data["course_key"], data["provider"], data["instance"], data["course_id"])
+
+
+def _parse_policy_skip(value: object) -> PolicySkipState:
+    data = _require_object(value, "policy skip")
+    if frozenset(data) not in {_POLICY_SKIP_FIELDS, _LEGACY_POLICY_SKIP_FIELDS}:
+        raise ValueError("policy skip fields do not match schema v5")
+    return PolicySkipState(
+        course_key=data["course_key"],
+        key=_parse_key(data["key"]),
+        signature=data["signature"],
+        reason=PolicySkipReason(data["reason"]),
+        policy_fingerprint=data.get("policy_fingerprint"),
+    )
+
+
 def _decode_state(payload: bytes) -> SyncState:
     try:
         value = json.loads(payload.decode("utf-8"))
@@ -199,12 +324,14 @@ def _decode_state(payload: bytes) -> SyncState:
     try:
         document = _require_object(value, "state")
         schema = document.get("schema_version")
-        if schema != CURRENT_STATE_SCHEMA or isinstance(schema, bool):
+        if schema not in {4, CURRENT_STATE_SCHEMA} or isinstance(schema, bool):
             raise StateLoadError(
                 "unsupported_schema",
                 f"Unsupported state schema {schema!r}; expected {CURRENT_STATE_SCHEMA}",
             )
-        _require_exact_fields(document, _ROOT_FIELDS, "state")
+        _require_exact_fields(
+            document, _V4_ROOT_FIELDS if schema == 4 else _ROOT_FIELDS, "state"
+        )
         profile = document["profile"]
         output_root = document["output_root"]
         sources = document["sources"]
@@ -214,10 +341,25 @@ def _decode_state(payload: bytes) -> SyncState:
             raise ValueError("output_root must be a string")
         if not isinstance(sources, list):
             raise ValueError("sources must be an array")
+        parsed_sources = tuple(_parse_source(source) for source in sources)
+        if schema == 4:
+            # v4 did not bind source records to logical courses, so inferring a
+            # checkpoint would be unsafe after reconfiguration.
+            initialized = ()
+            skips: tuple[PolicySkipState, ...] = ()
+        else:
+            initialized_values = document["initialized_sources"]
+            skip_values = document["policy_skips"]
+            if not isinstance(initialized_values, list) or not isinstance(skip_values, list):
+                raise ValueError("initialized_sources and policy_skips must be arrays")
+            initialized = tuple(_parse_initialized(value) for value in initialized_values)
+            skips = tuple(_parse_policy_skip(value) for value in skip_values)
         return SyncState(
             profile=profile,
             output_root=Path(output_root),
-            sources=tuple(_parse_source(source) for source in sources),
+            sources=parsed_sources,
+            initialized_sources=initialized,
+            policy_skips=skips,
         )
     except StateLoadError:
         raise

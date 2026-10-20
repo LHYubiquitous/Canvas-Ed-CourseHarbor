@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "canvas-ed-mcp"
-version = "0.1.0rc1"
+version = "0.2.0rc11"
 description = "Portable, local-first Canvas and Ed course sync with an MCP server"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,15 +32,23 @@ dependencies = [
   "pydantic>=2.0.0",
   "tomli>=2.0.0; python_version < '3.11'",
   "tomli-w>=1.0.0",
+  "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
 gradescope = ["gradescopeapi>=1.8.1"]
 test = []
 
+[dependency-groups]
+dev = [
+  "build>=1,<2",
+  "setuptools>=77",
+  "wheel",
+]
+
 [project.urls]
-Homepage = "https://github.com/LHYubiquitous/canvas-ed-mcp"
-Issues = "https://github.com/LHYubiquitous/canvas-ed-mcp/issues"
+Homepage = "https://github.com/LHYubiquitous/canvas-ed-mcp-public"
+Issues = "https://github.com/LHYubiquitous/canvas-ed-mcp-public/issues"
 Upstream = "https://github.com/r1ckyIn/canvas-ed-mcp"
 
 [project.scripts]

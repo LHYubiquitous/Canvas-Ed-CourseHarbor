@@ -34,6 +34,57 @@ _URL_ATTRIBUTES = frozenset(
         "xlink:href",
     }
 )
+_DOCUMENT_STYLE = """
+html {
+  background: #f3f4f6;
+  color: #1f2937;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.65;
+}
+body { margin: 0; }
+main {
+  box-sizing: border-box;
+  max-width: 960px;
+  margin: 2rem auto;
+  padding: 2rem 2.5rem;
+  background: #ffffff;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+h1, h2, h3, h4, h5, h6 { line-height: 1.3; }
+p, li { overflow-wrap: anywhere; }
+td, th {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+section.slide { margin-block: 2rem; }
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1rem auto;
+}
+table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 1rem;
+  background: #f3f4f6;
+}
+code { font-family: ui-monospace, "Cascadia Code", monospace; }
+@media (max-width: 720px) {
+  main {
+    margin: 0;
+    padding: 1rem;
+    border-radius: 0;
+  }
+}
+""".strip()
 
 
 class AssetDisposition(str, Enum):
@@ -42,10 +93,23 @@ class AssetDisposition(str, Enum):
     MISSING_IMAGE = "missing_image"
 
 
-def _validate_text(value: str, field: str, *, allow_empty: bool = False) -> None:
+def _validate_text(
+    value: str,
+    field: str,
+    *,
+    allow_empty: bool = False,
+    allow_formatting_whitespace: bool = False,
+) -> None:
     if not isinstance(value, str) or (not allow_empty and not value):
         raise ValueError(f"{field} must be a string")
-    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+    if any(
+        (
+            ord(character) < 32
+            and not (allow_formatting_whitespace and character in "\t\n\r")
+        )
+        or ord(character) == 127
+        for character in value
+    ):
         raise ValueError(f"{field} cannot contain control characters")
 
 
@@ -150,7 +214,12 @@ def render_page_html(
 ) -> RenderedHtml:
     """Render deterministic page HTML without network or filesystem access."""
     _validate_text(title, "title")
-    _validate_text(body_html, "body_html", allow_empty=True)
+    _validate_text(
+        body_html,
+        "body_html",
+        allow_empty=True,
+        allow_formatting_whitespace=True,
+    )
     source_url = sanitize_public_url(public_source_url)
     resolutions: dict[str, HtmlAssetResolution] = {}
     for resolution in assets:
@@ -260,6 +329,7 @@ def render_page_html(
     escaped_source = html.escape(source_url, quote=True)
     document = (
         '<!doctype html><html><head><meta charset="utf-8">'
+        f"<style>{_DOCUMENT_STYLE}</style>"
         f"<title>{escaped_title}</title></head><body>"
         f"<main><h1>{escaped_title}</h1>"
         f'<p class="source"><a href="{escaped_source}">Open source</a></p>'

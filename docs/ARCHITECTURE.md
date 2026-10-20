@@ -63,6 +63,10 @@ P3-06 verification note：`mcp>=1.29,<2` 是当前 protocol-test floor。测试�
 
 P3-02 implementation note：content discovery 返回 immutable `ContentBatch`，逐 kind 标出 `COMPLETE / PARTIAL / FAILED` coverage，并只携带 allowlisted、脱敏的 category/item issue fields。401 是全局 credential failure；403、单个 detail failure、malformed entry 和 duplicate stable ID 在可判定 scope 内隔离。所有 cache update 先 staging，fatal 时零变化，partial 时只发布本次成功 items；failed category 不混入旧 items。未知但有可显示内容的 slide 使用 generic safe renderer 并报告 `generic_slide_rendered`，无可显示内容则使用 self-contained placeholder 并报告 `unsupported_slide_kind`。`tests/fixtures/ed/v1/` 是 fixture format version，不代表上游 Ed API version，也不构成真实 beta schema integration evidence。
 
+P6-02 implementation note：Canvas content universe 为按 API 顺序出现的 module-linked Files/Pages，加上未在 module 中出现的 course Files；同一对象被多个 module 引用时首次出现的 module 决定 group，未关联文件进入 `Course Files`，不主动枚举全部 Pages。若学生账户可读 Modules 但 course-wide Files listing 返回 403，已发现的 module files 必须保留，File coverage 标为 partial 并报告非重试 `authorization_failed`；没有任何已发现 file 时仍为 failed，不能假装完成。destination 在 kind 目录下增加一个经过 portable sanitization 的可选 group component。Canvas API client 仅向配置 origin 发送 Bearer；下载/图片使用独立无凭据 client。Owner-device 证据与 Instructure 官方 domain list 证明真实图片链为 Canvas exact origin → 动态 `*.canvas-user-content.com` → gateway `*.inscloudgate.net` → CDN `*.inscloudgate.net`。只允许配置 origin 按该顺序委托，并只允许一次 inscloudgate suffix 内部 origin 变化，随后锁定 exact final origin；asset client 始终无 token/cookie。任意近似 suffix、其他 DNS host、IP literal、非 HTTPS、非默认端口及额外跨 host 仍在请求前拒绝。CLI 根据实际选中的 `(provider, instance)` lazy 构造 provider map，并在一个 state lock 下运行 Canvas/Ed ordered sources；未选择 provider 不解析 credential。
+
+P6-03a implementation note：新 profile 的 interactive `setup` 支持 Canvas-only、Ed-only 与 explicit both。Ed/both 每个新 source 单独确认 `baseline_from_now/import_all`，相同 name/code/term 不触发自动 mapping；preview 绑定 exact provider/instance/course ID。disabled provider 不解析 secret、不调用 catalog。setup 使用同目录 validated temporary file + atomic hard-link create，existing/racing target 均 fail closed；commit 后 cleanup 异常通过固定 `config_cleanup_pending` marker 报告，不能反报为未提交。catalog display controls 与 CLI exception text 均在边界去敏/拒绝。course-level content selection 由 provider canonical ownership 分配，兄弟来源类别不误报，而缺少 owner 或 runtime capability 仍显式报告。retain-by-default interactive `configure` 留给 P6-03b。
+
 ## 4. 配置模型（proposed）
 
 非秘密配置放在平台惯例 config directory；secret 只保存 keyring reference。示意：
@@ -158,6 +162,8 @@ P2-04 implementation note：state v4 文件内部再次绑定 `profile` 与 cano
 P2-05 implementation note：`build_configure_plan` 对同一 profile/output namespace 生成 deterministic course add/remove/change records；新增课程必须逐项给出 `baseline_from_now` 或 `import_all`。无 operational change 时保留原 `confirmed_at`；remove 只从新 config 移除，不触碰 output/state。preview 不显示 credential reference，confirmed commit 只原子写 config，并在磁盘 config 与 preview 基线不一致时拒绝提交。interactive CLI 尚未接线。
 
 P2-06 implementation note：lock file 位于所有 profiles 共享的 application state lock directory，但文件是否存在不代表占锁；互斥由 Windows `msvcrt.locking` / POSIX `flock` 的 OS-held lock 决定，process exit 会由 OS 释放。course lock digest 使用 canonical output root + physical course root，避免不同 profile/key 指向同一目录；state lock 使用 profile + output root。portable publication、state save 与 v3 migration 都要求 matching held lock。当前仅 Windows 分支实测；POSIX 为 `NOT_RUN`。
+
+P6-01 Ed rendering note：owner-device 真实内容审核发现 `edstem.org` Lesson 图片全部来自精确 host `static.au.edusercontent.com`。默认 Ed adapter 仅为 `edstem.org` instance 增加这个精确 asset host，不信任通配符或其他 `*.edusercontent.com` sibling；asset client 继续不得携带 API Bearer/Cookie，redirect 每跳仍须复核。renderer 在 sanitizer 之后只注入项目自有的固定 reading stylesheet（bounded content width、responsive image/table/pre），远端 `<style>` 与 inline style 仍会被移除。任一 item 的 placeholder/asset/render issue 必须同时出现在 source/CLI 汇总中，即使事务已经安全提交，命令仍以非零状态提示质量降级。
 
 ## 7. 安全边界
 

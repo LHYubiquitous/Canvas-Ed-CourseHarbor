@@ -69,6 +69,9 @@ class GradescopeClient(Protocol):
 class GradescopeProvider:
     """Own one isolated logged-in scraper connection with explicit credentials."""
 
+    provider_name = "gradescope"
+    instance = "gradescope.com"
+
     def __init__(
         self,
         email: str,
@@ -170,6 +173,64 @@ class GradescopeProvider:
                 )
             )
         return tuple(output)
+
+    def list_due_items(
+        self,
+        course_id: str,
+        *,
+        logical_course_key: str,
+        course_label: str,
+    ):
+        from decimal import Decimal, InvalidOperation
+
+        from ..due.model import (
+            DueBatch,
+            DueCoverageStatus,
+            DueIssue,
+            DueItem,
+            DuePrecision,
+            DueSourceKey,
+        )
+
+        assignments = self.list_assignments(course_id)
+        items: list[DueItem] = []
+        issues: list[DueIssue] = []
+        for index, assignment in enumerate(assignments):
+            if assignment.due_at is None:
+                continue
+            try:
+                due_at = datetime.fromisoformat(assignment.due_at)
+                if due_at.tzinfo is None:
+                    raise ValueError
+                points = None if assignment.max_grade is None else Decimal(assignment.max_grade)
+                if points is not None and points < 0:
+                    raise ValueError
+                remote_id = assignment.assignment_id
+                if not remote_id:
+                    raise ValueError
+                items.append(
+                    DueItem(
+                        key=DueSourceKey(
+                            "gradescope", self.instance, course_id, "assignment", remote_id
+                        ),
+                        logical_course_key=logical_course_key,
+                        course_label=course_label,
+                        title=assignment.name,
+                        due_at=due_at,
+                        precision=DuePrecision.DATETIME,
+                        points=points,
+                    )
+                )
+            except (ValueError, InvalidOperation):
+                issues.append(DueIssue("item_schema_drift", item_index=index))
+        return DueBatch(
+            "gradescope",
+            self.instance,
+            course_id,
+            DueCoverageStatus.PARTIAL if issues else DueCoverageStatus.COMPLETE,
+            tuple(items),
+            tuple(issues),
+        )
 
     def close(self) -> None:
         if self._closed:

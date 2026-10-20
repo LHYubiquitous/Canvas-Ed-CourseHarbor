@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/LHYubiquitous/canvas-ed-mcp/security/advisories/new
+    url: https://github.com/LHYubiquitous/canvas-ed-mcp-public/security/advisories/new
     about: Report vulnerabilities privately. Never include secrets or course data.

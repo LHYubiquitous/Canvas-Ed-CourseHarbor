@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -19,10 +19,12 @@ import tomli_w
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .paths import validate_profile_name
+from .initial import InitialSyncMode
 from .validation import validate_portable_component, validate_provider_instance
 
 
-CURRENT_CONFIG_SCHEMA = 1
+CURRENT_CONFIG_SCHEMA = 2
+_UNLIMITED_FILE_BYTES = "unlimited"
 _MIME_FILTER_RE = re.compile(
     r"[a-z0-9!#$&^_.+-]+/(?:[a-z0-9!#$&^_.+-]+|\*)\Z"
 )
@@ -95,6 +97,108 @@ class PlatformsConfig(StrictModel):
     gradescope: GradescopePlatformConfig = Field(default_factory=GradescopePlatformConfig)
 
 
+class LauncherConfig(StrictModel):
+    enabled: bool = True
+    directory: Path | None = None
+
+    @field_validator("directory")
+    @classmethod
+    def require_absolute_directory(cls, value: Path | None) -> Path | None:
+        if value is not None and not value.is_absolute():
+            raise ValueError("launcher directory must be absolute")
+        return value
+
+
+class GradescopeDueMapping(StrictModel):
+    logical_course_key: str = Field(min_length=1)
+    course_id: str = Field(min_length=1)
+    required: bool = False
+
+    @field_validator("logical_course_key", "course_id")
+    @classmethod
+    def validate_mapping_text(cls, value: str) -> str:
+        if value != value.strip() or any(ord(character) < 32 for character in value):
+            raise ValueError("Gradescope due mapping must use safe exact identifiers")
+        return value
+
+
+class TeachingPeriod(StrictModel):
+    label: str = Field(min_length=1)
+    start_date: date
+    end_date: date
+
+    @field_validator("label")
+    @classmethod
+    def validate_label(cls, value: str) -> str:
+        if value != value.strip() or any(ord(character) < 32 for character in value):
+            raise ValueError("teaching-period label must be safe non-empty text")
+        return value
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "TeachingPeriod":
+        if self.end_date < self.start_date:
+            raise ValueError("teaching-period end date cannot precede its start")
+        return self
+
+
+class DueReportConfig(StrictModel):
+    enabled: bool = True
+    timezone: Literal["Australia/Sydney"] = "Australia/Sydney"
+    semester_label: str | None = None
+    teaching_start: date | None = None
+    teaching_periods: tuple[TeachingPeriod, ...] = ()
+    unit_outline_files: tuple[Path, ...] = ()
+    required_outline_files: tuple[Path, ...] = ()
+    gradescope_courses: tuple[GradescopeDueMapping, ...] = ()
+    outline_title_overrides: tuple[tuple[str, str], ...] = ()
+
+    @field_validator("semester_label")
+    @classmethod
+    def validate_semester_label(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        clean = value.strip()
+        if not clean or any(ord(character) < 32 for character in clean):
+            raise ValueError("semester label must be safe non-empty text")
+        return clean
+
+    @field_validator("unit_outline_files", "required_outline_files")
+    @classmethod
+    def require_absolute_outline_files(cls, values: tuple[Path, ...]) -> tuple[Path, ...]:
+        if any(not value.is_absolute() for value in values):
+            raise ValueError("Unit Outline files must use absolute paths")
+        return values
+
+    @model_validator(mode="after")
+    def require_unique_gradescope_mappings(self) -> "DueReportConfig":
+        logical = [item.logical_course_key for item in self.gradescope_courses]
+        remote = [item.course_id for item in self.gradescope_courses]
+        if len(logical) != len(set(logical)) or len(remote) != len(set(remote)):
+            raise ValueError("Gradescope due mappings must be one-to-one")
+        periods = sorted(self.teaching_periods, key=lambda item: item.start_date)
+        if any(current.start_date <= previous.end_date for previous, current in zip(periods, periods[1:])):
+            raise ValueError("teaching periods cannot overlap")
+        overrides: list[tuple[str, str]] = []
+        for logical_key, title in self.outline_title_overrides:
+            if (
+                not logical_key or logical_key != logical_key.strip()
+                or not title or title != title.strip()
+                or any(ord(character) < 32 for character in logical_key + title)
+            ):
+                raise ValueError("outline title overrides require safe exact text")
+            overrides.append((logical_key, title.casefold()))
+        if len(overrides) != len(set(overrides)):
+            raise ValueError("outline title overrides must be unique")
+        if not set(self.required_outline_files).issubset(self.unit_outline_files):
+            raise ValueError("required Unit Outline files must also be configured outline files")
+        return self
+
+
+class DailyUseConfig(StrictModel):
+    launchers: LauncherConfig = Field(default_factory=LauncherConfig)
+    due: DueReportConfig = Field(default_factory=DueReportConfig)
+
+
 class ContentSelection(StrictModel):
     files: bool = True
     pages: bool = True
@@ -147,6 +251,7 @@ class CourseSource(StrictModel):
     code: str | None = None
     name: str | None = None
     term: str | None = None
+    initial_mode: InitialSyncMode = InitialSyncMode.BASELINE_FROM_NOW
 
     @field_validator("instance", "course_id")
     @classmethod
@@ -225,12 +330,13 @@ class CourseConfig(StrictModel):
 
 
 class AppConfig(StrictModel):
-    schema_version: Literal[1] = CURRENT_CONFIG_SCHEMA
+    schema_version: Literal[2] = CURRENT_CONFIG_SCHEMA
     profile: str = "default"
     output_root: Path
     platforms: PlatformsConfig = Field(default_factory=PlatformsConfig)
     courses: tuple[CourseConfig, ...] = ()
     retired_sources: tuple[RetiredCourseSource, ...] = ()
+    daily_use: DailyUseConfig = Field(default_factory=DailyUseConfig)
 
     @field_validator("profile")
     @classmethod
@@ -283,6 +389,17 @@ class AppConfig(StrictModel):
             if identity in source_owners:
                 raise ValueError("a retired remote source requires explicit migration before reattachment")
             retired_identities.add(identity)
+        gradescope_mappings = self.daily_use.due.gradescope_courses
+        if gradescope_mappings and not self.platforms.gradescope.enabled:
+            raise ValueError("Gradescope due mappings require the optional provider")
+        known_keys = set(keys)
+        if any(mapping.logical_course_key not in known_keys for mapping in gradescope_mappings):
+            raise ValueError("Gradescope due mappings require an exact configured logical course")
+        if any(
+            logical_key not in known_keys
+            for logical_key, _ in self.daily_use.due.outline_title_overrides
+        ):
+            raise ValueError("outline title overrides require an exact configured logical course")
         return self
 
 
@@ -302,20 +419,46 @@ def load_config(path: Path) -> AppConfig:
         raise ConfigLoadError("invalid_toml", f"Config is not valid TOML: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigLoadError("invalid_shape", "Config root must be a TOML table")
-    if _schema_version(data) != CURRENT_CONFIG_SCHEMA:
+    schema = _schema_version(data)
+    if schema not in {1, CURRENT_CONFIG_SCHEMA}:
         raise ConfigLoadError(
             "unsupported_schema",
             f"Unsupported config schema {_schema_version(data)!r}; expected {CURRENT_CONFIG_SCHEMA}",
         )
+    if schema == 1:
+        data["schema_version"] = CURRENT_CONFIG_SCHEMA
+        data.setdefault("daily_use", {})
+    courses = data.get("courses", ())
+    if isinstance(courses, list):
+        for course in courses:
+            if not isinstance(course, dict):
+                continue
+            policy = course.get("policy")
+            if (
+                isinstance(policy, dict)
+                and policy.get("max_file_bytes") == _UNLIMITED_FILE_BYTES
+            ):
+                policy["max_file_bytes"] = None
     try:
         return AppConfig.model_validate(data)
     except ValueError as exc:
         raise ConfigLoadError("invalid_config", f"Config validation failed: {exc}") from exc
 
 
+def _config_payload(config: AppConfig) -> dict[str, Any]:
+    payload = config.model_dump(mode="json", exclude_none=True)
+    serialized_courses = payload.get("courses", [])
+    for index, course in enumerate(config.courses):
+        if course.policy.max_file_bytes is None:
+            serialized_courses[index].setdefault("policy", {})[
+                "max_file_bytes"
+            ] = _UNLIMITED_FILE_BYTES
+    return payload
+
+
 def save_config(config: AppConfig, path: Path) -> None:
     """Atomically save non-secret config without mutating an existing file on failure."""
-    payload = config.model_dump(mode="json", exclude_none=True)
+    payload = _config_payload(config)
     document = tomli_w.dumps(payload)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
@@ -333,3 +476,33 @@ def save_config(config: AppConfig, path: Path) -> None:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def save_new_config(config: AppConfig, path: Path) -> bool:
+    """Atomically create config; return whether post-commit cleanup is pending."""
+    payload = _config_payload(config)
+    document = tomli_w.dumps(payload)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    committed = False
+    cleanup_pending = False
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", newline="\n", dir=path.parent, delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(document)
+            handle.flush()
+            os.fsync(handle.fileno())
+        load_config(temporary)
+        os.link(temporary, path)
+        committed = True
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                if not committed:
+                    raise
+                cleanup_pending = True
+    return cleanup_pending

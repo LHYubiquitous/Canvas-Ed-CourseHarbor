@@ -12,6 +12,7 @@ SOURCE_ROOT = REPOSITORY_ROOT / "src"
 sys.path.insert(0, str(SOURCE_ROOT))
 
 from canvas_ed_mcp.providers.gradescope import GradescopeError, GradescopeProvider
+from canvas_ed_mcp.due.model import DueCoverageStatus
 
 
 class FakeAccount:
@@ -87,6 +88,23 @@ class GradescopeProviderTests(unittest.TestCase):
         provider.close()
         provider.close()
         self.assertEqual(1, connection.close_calls)
+
+    def test_due_projection_uses_original_due_and_exact_course_mapping(self) -> None:
+        connection = FakeConnection()
+        provider = GradescopeProvider(
+            "synthetic@example.invalid",
+            "synthetic-password",
+            connection_factory=lambda: connection,
+        )
+        provider.list_courses()
+        batch = provider.list_due_items(
+            "901", logical_course_key="logical-1", course_label="SAFE1000"
+        )
+        self.assertEqual(DueCoverageStatus.COMPLETE, batch.coverage)
+        self.assertEqual("Synthetic assignment", batch.items[0].title)
+        self.assertEqual("10", str(batch.items[0].points))
+        self.assertEqual("2099-10-01T10:00:00+00:00", batch.items[0].due_at.isoformat())
+        provider.close()
 
     def test_assignments_require_exact_course_from_current_catalog(self) -> None:
         connection = FakeConnection()

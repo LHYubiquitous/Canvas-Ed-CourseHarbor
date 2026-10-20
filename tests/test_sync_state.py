@@ -26,11 +26,14 @@ from canvas_ed_mcp.sync.state import (
     StateLoadError,
     StateMigrationError,
     SyncState,
+    InitializedSource,
+    PolicySkipState,
     load_state,
     migrate_v3_state_file as migrate_v3_state_file_v4,
     new_state,
     save_state as save_state_v4,
 )
+from canvas_ed_mcp.sync.policy import PolicySkipReason
 
 
 MANAGED_HASH = "a" * 64
@@ -142,6 +145,67 @@ class StateModelAndPersistenceTests(unittest.TestCase):
         self.assertEqual((), state.sources)
         with self.assertRaises(dataclasses.FrozenInstanceError):
             state.profile = "changed"  # type: ignore[misc]
+
+    def test_v5_persists_empty_source_checkpoint_and_policy_skip(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            output = base / "Courses"
+            state = SyncState(
+                "default", output.resolve(), (),
+                initialized_sources=(InitializedSource("logical-202", "ed", "ed.example.edu", "202"),),
+                policy_skips=(PolicySkipState(
+                    "logical-202",
+                    source_key(provider="ed", course_id="202", kind=RemoteKind.RESOURCE, remote_id="skip"),
+                    "revision", PolicySkipReason.KNOWN_SIZE_LIMIT_EXCEEDED,
+                ),),
+            )
+            path = base / "state.json"
+            save_state(state, path=path, backup_path=base / "backup.json")
+            loaded = load_state(path, profile="default", output_root=output)
+
+        self.assertTrue(loaded.initialized_for(course_key="logical-202", provider="ed", instance="ed.example.edu", course_id="202"))
+        self.assertEqual(state, loaded)
+
+    def test_v5_legacy_policy_skip_without_fingerprint_loads_for_safe_reevaluation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            output = base / "Courses"
+            state = SyncState(
+                "default", output.resolve(), (),
+                policy_skips=(PolicySkipState(
+                    "logical-202",
+                    source_key(provider="ed", course_id="202", kind=RemoteKind.RESOURCE, remote_id="skip"),
+                    "revision", PolicySkipReason.KNOWN_SIZE_LIMIT_EXCEEDED,
+                    "a" * 64,
+                ),),
+            )
+            path = base / "state.json"
+            save_state(state, path=path, backup_path=base / "backup.json")
+            document = json.loads(path.read_text(encoding="utf-8"))
+            document["policy_skips"][0].pop("policy_fingerprint")
+            path.write_text(json.dumps(document), encoding="utf-8")
+            loaded = load_state(path, profile="default", output_root=output)
+
+        self.assertIsNone(loaded.policy_skips[0].policy_fingerprint)
+
+    def test_v4_document_loads_with_conservative_derived_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            output = (base / "Courses").resolve()
+            path = base / "state.json"
+            path.write_text(json.dumps({
+                "schema_version": 4,
+                "profile": "default",
+                "output_root": str(output),
+                "sources": [{
+                    "key": {"provider": "ed", "instance": "ed.example.edu", "course_id": "202", "kind": "resource", "remote_id": "one"},
+                    "signature": "revision", "stored_file": None, "retry_required": False,
+                }],
+            }), encoding="utf-8")
+            loaded = load_state(path, profile="default", output_root=output)
+
+        self.assertEqual(CURRENT_STATE_SCHEMA, loaded.schema_version)
+        self.assertFalse(loaded.initialized_sources)
 
     def test_save_requires_a_held_matching_state_lock(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

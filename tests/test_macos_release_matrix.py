@@ -16,6 +16,11 @@ sys.path.insert(0, str(SOURCE_ROOT))
 
 
 class MacOSReleaseMatrixTests(unittest.TestCase):
+    def test_reviewed_uv_version_matches_owner_device(self) -> None:
+        from ci import macos_release_matrix as matrix
+
+        self.assertEqual("uv 0.11.28", matrix.REVIEWED_UV_VERSION)
+
     def test_source_version_contract_avoids_legacy_module(self) -> None:
         from ci import macos_release_matrix as matrix
 
@@ -23,7 +28,7 @@ class MacOSReleaseMatrixTests(unittest.TestCase):
             if argv[:3] == ("command", "-v", "uv"):
                 return "/usr/bin/uv"
             if argv[-1] == "--version":
-                return "uv 0.9.30"
+                return "uv 0.11.28"
             if argv[:2] == ("git", "status"):
                 return ""
             if argv[:2] == ("git", "rev-parse"):

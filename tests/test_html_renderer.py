@@ -19,6 +19,45 @@ from canvas_ed_mcp.renderers.html import (
 
 
 class HtmlRendererTests(unittest.TestCase):
+    def test_document_includes_trusted_reading_styles_after_sanitization(self) -> None:
+        rendered = render_page_html(
+            title="Readable",
+            public_source_url="https://canvas.example.test/page",
+            body_html=(
+                "<style>body{background:url(https://evil.example/track)}</style>"
+                "<p>Readable content</p>"
+            ),
+        )
+
+        self.assertEqual(1, rendered.document.count("<style>"))
+        self.assertIn("max-width: 960px", rendered.document)
+        self.assertIn("overflow-wrap: anywhere", rendered.document)
+        self.assertIn("td, th {\n  overflow-wrap: normal;", rendered.document)
+        self.assertIn("word-break: normal;", rendered.document)
+        self.assertNotIn(
+            "p, li, td, th { overflow-wrap: anywhere; }", rendered.document
+        )
+        self.assertIn("img {", rendered.document)
+        self.assertIn("max-width: 100%", rendered.document)
+        self.assertNotIn("evil.example", rendered.document)
+
+    def test_body_html_accepts_formatting_whitespace(self) -> None:
+        rendered = render_page_html(
+            title="Formatting whitespace",
+            public_source_url="https://canvas.example.test/page",
+            body_html="\n\t<section>Safe</section>\r\n",
+        )
+
+        self.assertIn("<section>Safe</section>", rendered.document)
+
+    def test_body_html_rejects_disallowed_control_characters(self) -> None:
+        with self.assertRaisesRegex(ValueError, "control characters"):
+            render_page_html(
+                title="Invalid control character",
+                public_source_url="https://canvas.example.test/page",
+                body_html="<section>Unsafe\x00</section>",
+            )
+
     def test_renderer_embeds_images_removes_responsive_sources_and_sanitizes_links(self) -> None:
         body = (
             '<picture><source srcset="https://files.example.test/large.png?token=private 2x">'

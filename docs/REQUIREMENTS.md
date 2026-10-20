@@ -1,7 +1,7 @@
 # 可迁移与开源改造需求
 
-> 状态：PHASE 0—3 MOCK_VERIFIED / P4 AUTOMATED WORK COMPLETE / P4-04 MANUAL AUTH REQUIRED / P5 NOT STARTED
-> 日期：2026-10-13
+> 状态：PORTABLE 0.2 IMPLEMENTED / RC11 AUTOMATED RELEASE GATE
+> 日期：2026-10-20
 
 ## 目标用户与结果
 
@@ -20,14 +20,14 @@
 | REQ-007 | 安装时询问 output root、课程文件夹名；默认“桌面/课程代码”但允许修改 | MUST | user | 每门课显示最终绝对路径并确认；冲突/不可写提前失败 | CONFIRMED |
 | REQ-008 | 下载内容类型可配置，并支持平台/课程级 override | MUST | user | files/pages/lessons/resources 等类别可选；未选类别不扫描或不落盘 | CONFIRMED |
 | REQ-009 | 支持 include/exclude 扩展名/MIME 和可配置文件大小上限 | MUST | user | 已知大小在请求前跳过；未知大小在流式读取中硬性终止且无残留 | CONFIRMED |
-| REQ-010 | Windows、macOS、Linux 有安装、配置、启动、更新和卸载路径 | MUST | user | CI 三系统通过 unit/smoke；无绝对个人路径和 shell-only 主入口 | IMPLEMENTED; Windows LOCAL_PASS; remote/macOS/Linux NOT_RUN |
-| REQ-011 | 配置、状态、日志和用户资料分离，支持多个 profile/output root | MUST | inferred | 一个用户可创建两个 profile，互不认领/覆盖 state | PROPOSED |
-| REQ-012 | 课程映射使用稳定平台 ID + instance identity，不再只按 code 猜测 | MUST | code gap | 同 code 不同 term 同时存在时能明确选择且不会串课 | PROPOSED |
-| REQ-013 | 安装/重配置必须有 dry-run/preview 和明确确认；默认无破坏性动作 | MUST | safety | 取消确认时 config/state/资料均不变 | PROPOSED |
-| REQ-014 | 打包成标准 Python project，提供稳定 console commands | SHOULD | portability | clean venv 可安装，`canvas-ed-mcp --help` / `course-sync --help` 可运行 | PROPOSED |
-| REQ-015 | 建立脱敏日志、诊断包和明确退出码 | SHOULD | operations | 失败可定位且日志不含 Bearer/signed query/账号原始 payload | PROPOSED |
-| REQ-016 | 分离通用产品代码与 legacy/personal scripts/data | MUST | publication | release manifest 不含课程专用数据、绝对路径、凭据/state/cache | PROPOSED |
-| REQ-017 | 公开发布前完成依赖许可、版权归属、秘密与历史扫描 | MUST | user + publication gate | audit + 人工 review 通过并保留 THIRD_PARTY_NOTICES | PROPOSED |
+| REQ-010 | Windows、macOS、Linux 有安装、配置、启动、更新和卸载路径 | MUST | user | CI 三系统通过 unit/smoke；无绝对个人路径和 shell-only 主入口 | IMPLEMENTED; rc10 remote matrix PASS; Windows/macOS owner review PASS; Linux owner-device NOT_RUN |
+| REQ-011 | 配置、状态、日志和用户资料分离，支持多个 profile/output root | MUST | inferred | 一个用户可创建两个 profile，互不认领/覆盖 state | IMPLEMENTED; synthetic + isolated Windows profiles PASS |
+| REQ-012 | 课程映射使用稳定平台 ID + instance identity，不再只按 code 猜测 | MUST | code gap | 同 code 不同 term 同时存在时能明确选择且不会串课 | IMPLEMENTED; synthetic + Windows discovery PASS |
+| REQ-013 | 安装/重配置必须有 dry-run/preview 和明确确认；默认无破坏性动作 | MUST | safety | 取消确认时 config/state/资料均不变 | IMPLEMENTED; synthetic + owner-device no-op dry-runs PASS |
+| REQ-014 | 打包成标准 Python project，提供稳定 console commands | SHOULD | portability | clean venv 可安装，`canvas-ed-mcp --help` / `course-sync --help` 可运行 | IMPLEMENTED; rc11 local wheel and clean-source gate PASS |
+| REQ-015 | 建立脱敏日志、诊断包和明确退出码 | SHOULD | operations | 失败可定位且日志不含 Bearer/signed query/账号原始 payload | PARTIAL: stable redacted CLI diagnostics; standalone support bundle not implemented |
+| REQ-016 | 分离通用产品代码与 legacy/personal scripts/data | MUST | publication | release manifest 不含课程专用数据、绝对路径、凭据/state/cache | IMPLEMENTED; fail-closed allowlist |
+| REQ-017 | 公开发布前完成依赖许可、版权归属、秘密与历史扫描 | MUST | user + publication gate | audit + 人工 review 通过并保留 THIRD_PARTY_NOTICES | rc11 local automated audit PASS; remote CI pending push |
 | REQ-018 | MCP 工具按启用 provider 暴露或给出清晰 unavailable 状态 | SHOULD | portability | Canvas-only 不要求 Ed；Ed-only 不要求 Canvas/Gradescope | MOCK_VERIFIED via direct + in-memory protocol + Windows stdio tests |
 
 ## MUST 的 Given / When / Then 摘要

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import logging
 from dataclasses import dataclass
 from typing import Mapping, Protocol
 
@@ -16,6 +17,35 @@ _SENSITIVE_QUERY = re.compile(
 )
 _URL_FRAGMENT = re.compile(r"(?i)(https?://[^\s#]+)#[^\s'\"<>]*")
 _UNSAFE_BACKEND_MARKERS = ("fail", "null", "plaintext")
+_HTTP_LOGGER_NAMES = (
+    "httpx",
+    "httpcore.connection",
+    "httpcore.connection_pool",
+    "httpcore.http11",
+    "httpcore.http2",
+    "httpcore.proxy",
+    "httpcore.socks",
+    "httpcore.socks_proxy",
+)
+
+
+class _HttpRedactionFilter(logging.Filter):
+    """Redact dependency messages without suppressing unrelated diagnostics."""
+
+    _canvas_ed_filter = True
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = redact_text(record.getMessage())
+        record.args = ()
+        return True
+
+
+def install_http_redaction_filters() -> None:
+    """Install one idempotent redaction filter on HTTP dependency loggers."""
+    for name in _HTTP_LOGGER_NAMES:
+        logger = logging.getLogger(name)
+        if not any(getattr(item, "_canvas_ed_filter", False) for item in logger.filters):
+            logger.addFilter(_HttpRedactionFilter())
 
 
 class KeyringBackend(Protocol):

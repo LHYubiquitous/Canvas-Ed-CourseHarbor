@@ -28,6 +28,34 @@ class PortablePackageTests(unittest.TestCase):
                 check=False,
             )
 
+    def test_create_only_config_reports_commit_when_post_link_cleanup_fails(self) -> None:
+        result = self.run_package_code(
+            """
+            import tempfile
+            import warnings
+            from pathlib import Path
+            from unittest.mock import patch
+            from canvas_ed_mcp.config import AppConfig, load_config, save_new_config
+
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                path = root / "config.toml"
+                config = AppConfig(profile="cleanup", output_root=root / "Courses")
+                original_unlink = Path.unlink
+                def fail_temporary_only(target, *args, **kwargs):
+                    if target != path:
+                        raise OSError("synthetic cleanup failure")
+                    return original_unlink(target, *args, **kwargs)
+                with patch.object(Path, "unlink", fail_temporary_only):
+                    cleanup_pending = save_new_config(config, path)
+                assert load_config(path) == config
+                assert cleanup_pending
+                print("committed")
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("committed", result.stdout.strip())
+
     def test_console_module_exposes_stable_help_without_loading_legacy_server(self) -> None:
         environment = dict(os.environ)
         environment["PYTHONPATH"] = str(SOURCE_ROOT)
@@ -64,6 +92,7 @@ class PortablePackageTests(unittest.TestCase):
                 load_config,
                 save_config,
             )
+            from canvas_ed_mcp.initial import InitialSyncMode
 
             with tempfile.TemporaryDirectory() as temporary:
                 base = Path(temporary)
@@ -91,6 +120,7 @@ class PortablePackageTests(unittest.TestCase):
                                     code="TEST1000",
                                     name="Synthetic Course",
                                     term="2026 Semester 2",
+                                    initial_mode=InitialSyncMode.IMPORT_ALL,
                                 )
                             ],
                         )
@@ -105,19 +135,51 @@ class PortablePackageTests(unittest.TestCase):
                     "ed": loaded.platforms.ed.enabled,
                     "ed_credential": loaded.platforms.ed.credential,
                     "course_key": loaded.courses[0].key,
+                    "initial_mode": loaded.courses[0].sources[0].initial_mode.value,
                     "same": loaded == config,
                 }))
             """
         )
         self.assertEqual(0, result.returncode, result.stderr)
         data = json.loads(result.stdout)
-        self.assertEqual(1, data["schema"])
+        self.assertEqual(2, data["schema"])
         self.assertEqual("default", data["profile"])
         self.assertTrue(data["canvas"])
         self.assertFalse(data["ed"])
         self.assertIsNone(data["ed_credential"])
         self.assertEqual("canvas:canvas.example.edu:101", data["course_key"])
+        self.assertEqual("import_all", data["initial_mode"])
         self.assertTrue(data["same"])
+
+    def test_schema_v1_loads_with_safe_daily_use_defaults(self) -> None:
+        result = self.run_package_code(
+            """
+            import json
+            import tempfile
+            from pathlib import Path
+            from canvas_ed_mcp.config import load_config
+
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                path = root / "config.toml"
+                path.write_text(
+                    'schema_version = 1\\nprofile = "legacy"\\noutput_root = "' +
+                    str(root / "Courses").replace('\\\\', '/') + '"\\n',
+                    encoding="utf-8",
+                )
+                config = load_config(path)
+                print(json.dumps({
+                    "schema": config.schema_version,
+                    "launchers": config.daily_use.launchers.enabled,
+                    "timezone": config.daily_use.due.timezone,
+                }))
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            {"schema": 2, "launchers": True, "timezone": "Australia/Sydney"},
+            json.loads(result.stdout),
+        )
 
     def test_unknown_config_schema_fails_closed(self) -> None:
         result = self.run_package_code(
@@ -142,6 +204,48 @@ class PortablePackageTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("unsupported_schema", result.stdout.strip())
+
+    def test_gradescope_due_mapping_requires_enabled_provider_and_known_course(self) -> None:
+        result = self.run_package_code(
+            """
+            from pathlib import Path
+            from canvas_ed_mcp.config import AppConfig, DailyUseConfig, DueReportConfig, GradescopeDueMapping
+
+            try:
+                AppConfig(
+                    output_root=Path.cwd(),
+                    daily_use=DailyUseConfig(
+                        due=DueReportConfig(
+                            gradescope_courses=(GradescopeDueMapping(logical_course_key="missing", course_id="901"),)
+                        )
+                    ),
+                )
+            except ValueError:
+                print("rejected")
+            else:
+                raise AssertionError("unsafe Gradescope due mapping was accepted")
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("rejected", result.stdout.strip())
+
+    def test_required_outline_must_also_be_a_configured_outline(self) -> None:
+        result = self.run_package_code(
+            """
+            from pathlib import Path
+            from canvas_ed_mcp.config import DueReportConfig
+
+            missing = (Path.cwd() / "missing-outline.md").resolve()
+            try:
+                DueReportConfig(required_outline_files=(missing,))
+            except ValueError:
+                print("rejected")
+            else:
+                raise AssertionError("unconfigured required Outline was accepted")
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("rejected", result.stdout.strip())
 
     def test_atomic_config_replace_failure_preserves_previous_file(self) -> None:
         result = self.run_package_code(

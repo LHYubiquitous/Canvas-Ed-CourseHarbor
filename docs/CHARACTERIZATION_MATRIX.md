@@ -20,6 +20,8 @@
 | 12 | A single Ed Resource failure is isolated and later resources continue | `test_ed_resource_timeout_does_not_skip_later_resources` |
 | 13 | State is isolated by absolute output root; v2 paths are not silently claimed as managed | `test_state_is_namespaced_by_output_root_and_v2_paths_stay_unmanaged`; `test_managed_path_outside_course_root_is_rejected` |
 | 14 | Signed queries/fragments are redacted from links and errors, and Bearer credentials are not sent to non-Canvas media hosts | `test_safe_error_strips_signed_query_and_fragment`; `test_embedded_pdf_link_does_not_persist_signed_query`; `test_canvas_page_does_not_download_non_image_attachments`; `test_canvas_image_is_embedded_without_asset_file`; `test_canvas_metadata_failure_still_sanitizes_attachment_link` |
+| 15 | Portable Canvas discovery preserves module-linked Pages/Files plus remaining course Files; first module wins grouping and unlinked Pages are not enumerated | `test_content_universe_first_group_and_self_contained_fetches`; `test_page_only_never_lists_all_files_or_unlinked_pages`; `test_optional_group_adds_one_sanitized_portable_component` |
+| 16 | Canvas API Bearer remains on the configured origin; asset fetch is credential-free, exact-host allowlisted, rejects arbitrary DNS targets before request, and cannot change origin through redirects | `test_cross_origin_pagination_is_rejected_before_token_can_leak`; `test_asset_client_rejects_credentials_and_truncated_file`; `test_unallowlisted_dns_asset_is_rejected_before_request`; `test_asset_redirect_cannot_change_delegated_origin` |
 
 ## Decision table locked by tests
 
@@ -54,7 +56,7 @@ The remote-change-after-deletion behavior intentionally preserves the legacy def
 
 ## P2-05 configure evidence
 
-`tests/test_configure_flow.py` proves deterministic course add/remove/change previews, explicit initial behavior for every newly added course and no operational diff from confirmation timestamp churn. Cancel is zero-write; confirmed removal updates only config while preserving course files and historical state bytes. A config changed after preview is rejected. The interactive `configure` CLI remains reserved, so this evidence is mock-level planning/commit behavior rather than an end-user flow.
+`tests/test_configure_flow.py` proves deterministic course add/remove/change previews, explicit initial behavior for every newly added source and no operational diff from confirmation timestamp churn. The interactive `configure` CLI is retain-by-default and provider-side scoped: unselected providers perform no secret lookup or discovery, mixed-course edits preserve the other provider, blank edits preserve exact policy bytes and filters, and no-op/dry-run/final cancel are zero-write. Confirmed removal updates only config while preserving course files and historical state bytes; a config changed after preview is rejected. Windows owner-device configure is `PASS` for real Ed-side, Canvas-side and mixed-provider discovery. The isolated Ed copy additionally passed config-only commit and byte-exact rollback; Canvas-only and mixed-provider were no-op dry-runs with no content/state writes.
 
 ## P2-06 lock evidence
 

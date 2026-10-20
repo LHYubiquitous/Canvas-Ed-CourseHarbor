@@ -156,8 +156,16 @@ class ContentBatch:
                 raise ValueError("failed coverage cannot contain items")
             if status is CoverageStatus.COMPLETE and scopes:
                 raise ValueError("complete coverage cannot contain issues")
-            if status is CoverageStatus.PARTIAL and scopes != {IssueScope.ITEM}:
-                raise ValueError("partial coverage requires only item issues")
+            if status is CoverageStatus.PARTIAL and not scopes:
+                raise ValueError("partial coverage requires issues")
+            if (
+                status is CoverageStatus.PARTIAL
+                and IssueScope.CATEGORY in scopes
+                and kind not in item_kinds
+            ):
+                raise ValueError(
+                    "partial category coverage requires at least one discovered item"
+                )
             if status is CoverageStatus.FAILED and scopes != {IssueScope.CATEGORY}:
                 raise ValueError("failed coverage requires only category issues")
 

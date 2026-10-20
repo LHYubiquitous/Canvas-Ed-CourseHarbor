@@ -1,6 +1,6 @@
 # 当前实现与不可回归基线
 
-> 审计日期：2026-10-13
+> 审计日期：2026-10-18
 > 状态：代码现状审计；本文件中的“已实现”仅指本地源码和测试已核实，不代表跨平台或真实账户集成均已验证。
 
 ## 1. 当前项目包含什么
@@ -55,6 +55,37 @@ dependency imports: OK
 上述 19 个测试覆盖：HTML 图片内嵌、非图片不内嵌、失败重试占位、用户编辑保护、原位更新、截断/超时下载拒绝、用户文件不认领、Ed 单项失败隔离、state output-root 隔离、签名 URL 去敏等。
 
 Phase 0 在 2026-10-13 又增加 13 个 synthetic/mock tests；当前 Windows 完整套件为 **32 passed**。新增证据覆盖 baseline、用户删除后远端不变/后来变化、URL 轮换、目录复用/fallback、无 raw JSON、原子替换失败、跨文件名去重、错误脱敏，以及 Canvas base URL/Unit Outline SSRF allowlist。完整映射见 `CHARACTERIZATION_MATRIX.md`。
+
+## Portable 0.2 status
+
+The current private tree targets documentation and metadata candidate `0.2.0rc11`.
+The published `v0.1.0rc1` remains a separate immutable artifact. rc10 product behavior
+completed the Windows/macOS owner review and three-system private CI; rc11 repeats the
+automated gate before any public repository update, tag, or GitHub prerelease.
+
+Portable `canvas-ed-mcp sync` now composes the same protected decision/storage/state
+primitives for explicitly configured Canvas and Ed sources. Canvas discovery includes
+module-linked Pages/Files in module order plus remaining course Files; the first module
+reference owns grouping, while unlinked Pages are deliberately not enumerated. Pages
+use the self-contained safe HTML renderer. Canvas API Bearer credentials stay on the
+configured origin, and a separate credential-free client defaults to the exact Canvas
+hostname allowlist. Reviewed Canvas image redirects may follow only the ordered exact
+origin → `*.canvas-user-content.com` → `*.inscloudgate.net` chain, with one internal
+inscloudgate delegation before exact-origin pinning; other DNS/CDN hosts fail closed.
+Synthetic status is 309 tests passing with one expected Windows symlink-privilege
+skip. Real Canvas content is `HUMAN_VERIFIED_WITH_WARNINGS`: isolated
+import, embedded-image and HTML safety audits, idempotency, secret scan, plus desktop
+and narrow Chromium rendering passed; course-wide Files remains partial after a
+confirmed 403; the owner accepted the visible images and desktop/narrow layouts.
+
+P6-03 adds create-only interactive setup for new Canvas-only, Ed-only, and explicit
+Canvas+Ed profiles plus retain-by-default interactive configuration of existing
+profiles. Disabled or unselected providers perform no secret lookup or request;
+source mapping, detachment and initial mode remain explicit. Detachment preserves
+local output and historical state. P6-03b is synthetic-complete. Windows owner-device
+configure is `PASS` for real Ed-side, Canvas-side and mixed-provider discovery. The
+isolated Ed copy additionally passed config-only commit and byte-exact rollback;
+Canvas-only and mixed-provider no-op dry-runs exited 0 without content/state writes.
 
 Phase 1 与 P2-01 将 Windows synthetic/mock 完整套件扩展到 **62 passed**：新增 portable config/secrets/setup/provider tests，以及 14 个 sync-domain tests。P2-01 已证明两阶段 decision table 可表达 baseline、no-backdate、remote change、retry、managed replacement、user-edit preservation、de-duplication 和 unsafe-path blocking。
 

@@ -1,6 +1,52 @@
-# Release and Security Audit — 0.1.0rc1
+# Release and Security Audit
 
-Status: **LOCAL RELEASE_CANDIDATE — NOT PUBLISHED**
+## 0.2.0rc11 release gate
+
+Status: **AUTOMATED RELEASE GATE PASSED**
+Audit date: 2026-10-20
+
+This section is the immutable build-time evidence snapshot. The public
+[GitHub Release](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc11)
+is the authoritative publication record; PyPI publication is outside this release.
+
+`0.2.0rc11` is a documentation and package-metadata successor to the owner-tested
+`0.2.0rc10` candidate. It does not change synchronization, due-report, launcher, or
+MCP behavior. It updates the public README, current verification record, candidate
+version, and public project links.
+
+The candidate is built from the exact 126-file `release-manifest.txt` allowlist. The
+private development history, credentials, state, course content, outputs, personal
+launchers, and legacy root tools are outside this boundary.
+
+### Current evidence
+
+| Gate | rc11 result |
+|---|---|
+| Windows owner-device Canvas/Ed material sync and rendering | `HUMAN_VERIFIED_WITH_WARNINGS` |
+| Windows daily terminal app and due reports | `PASS` on the rc7–rc10 behavior line |
+| macOS automated owner-device matrix | `PASS` for rc9; rc11 owner rerun `NOT_RUN` |
+| macOS launchers, MCP host, real Canvas catalog, material sync and due reports | `PASS` on rc9/rc10 |
+| rc10 private CI: Windows/macOS/Linux, Python 3.10–3.15 | `PASS` at commit `f178c27` |
+| rc11 local synthetic suite | `PASS`: 331 tests, 1 expected Windows symlink skip |
+| rc11 lock/SBOM and deterministic packet audit | `PASS` with reviewed `uv 0.11.28` |
+| rc11 Windows Python 3.14 wheel and clean-source installs | `PASS`: 42 packages, CLI/MCP smoke passed |
+| rc11 private remote CI | `PASS`: Windows/macOS/Linux, Python 3.10–3.15, distribution build and audit |
+| Public repository, tag and GitHub prerelease | Authoritative status is recorded by the linked GitHub Release |
+| PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
+
+The known Canvas course-wide Files `403` remains partial coverage; module-linked
+content was reviewed successfully. Ed remains an unofficial schema-sensitive
+integration, and its accepted rendering warnings remain visible in the result.
+Native owner-device Linux keyring and desktop-launcher checks remain `NOT_RUN`.
+
+The sections below retain the historical `v0.1.0rc1` audit for provenance. They are
+not evidence for rc11.
+
+## Historical v0.1.0rc1 audit
+
+### Release and Security Audit — 0.1.0rc1
+
+Status: **PUBLIC RELEASE CANDIDATE PUBLISHED — GITHUB ONLY**
 Audit date: 2026-10-14
 Scope: the explicit public-source allowlist, wheel, sdist, dependency inventory,
 and reachable Git history of the private development repository.
@@ -12,9 +58,10 @@ public candidate. The current private repository and its reachable history are n
 approved as a public repository: a public project must instead be initialized from
 the deterministic, audited clean-source archive produced by `ci/release_gate.py`.
 
-This audit does not authorize a remote change, tag, GitHub Release, or package-index
-publication. Those actions remain behind P5-06 and require an exact destination,
-visibility, tag, and publication decision.
+After this audit, the user explicitly authorized the public destination and GitHub
+release scope. The 103-file candidate was published as clean history at
+`LHYubiquitous/canvas-ed-mcp-public`, tagged `v0.1.0rc1`, and released as a GitHub
+prerelease. PyPI/package-index publication remains unauthorized and `NOT_RUN`.
 
 ## 2. Findings and disposition
 
@@ -101,5 +148,7 @@ embedded in this included document because that would make the archive self-refe
 - Real-account calls on macOS/Linux: **NOT_RUN**.
 - Ed authenticated UI/schema confirmation beyond the authorized Windows read-only
   catalog smoke: **DEGRADED**.
-- Public repository creation, public push, tag, GitHub Release, or PyPI publication:
-  **NOT_RUN / NOT AUTHORIZED**.
+- Public clean-history repository, public push, tag, and GitHub prerelease: **PASS**.
+  Public `main` and tag CI both passed, and the uploaded archive digest matched the
+  audited local SHA-256.
+- PyPI/package-index publication: **NOT_RUN / NOT AUTHORIZED**.

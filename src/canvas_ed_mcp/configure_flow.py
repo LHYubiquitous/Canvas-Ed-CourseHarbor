@@ -3,12 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
 
-from .config import AppConfig, CourseConfig, RetiredCourseSource, load_config, save_config
+from .config import (
+    AppConfig,
+    CanvasPlatformConfig,
+    ContentSelection,
+    CourseConfig,
+    CourseSource,
+    DownloadPolicy,
+    EdPlatformConfig,
+    RetiredCourseSource,
+    load_config,
+    save_config,
+)
 from .course_mapping import InitialSyncMode, SourceIdentity
+from .providers.base import CourseCandidate
 
 
 _OPERATIONAL_COURSE_FIELDS = ("folder", "sources", "content", "policy")
@@ -221,6 +234,11 @@ def build_configure_plan(
         for course in current.courses
         for source in course.sources
     }
+    current_source_values = {
+        SourceIdentity.from_source(source): source
+        for course in current.courses
+        for source in course.sources
+    }
     proposed_source_owner = {
         SourceIdentity.from_source(source): course.key
         for course in proposed.courses
@@ -266,6 +284,29 @@ def build_configure_plan(
             identity = next(iter(new_for_course))
             initial_sync.append(InitialSyncSelection(key, mode, identity))
 
+    selected_modes = {
+        selection.source: selection.mode for selection in initial_sync
+        if selection.source is not None
+    }
+    normalized_proposed: dict[str, CourseConfig] = {}
+    for key, course in proposed_by_key.items():
+        normalized_sources = []
+        for source in course.sources:
+            identity = SourceIdentity.from_source(source)
+            if identity in added_sources:
+                source = source.model_copy(
+                    update={"initial_mode": selected_modes[identity]}
+                )
+            else:
+                source = source.model_copy(
+                    update={"initial_mode": current_source_values[identity].initial_mode}
+                )
+            normalized_sources.append(source)
+        normalized_proposed[key] = course.model_copy(
+            update={"sources": tuple(normalized_sources)}
+        )
+    proposed_by_key = normalized_proposed
+
     additions = tuple(
         CourseChange(
             kind=ConfigureChangeKind.ADD,
@@ -305,17 +346,12 @@ def build_configure_plan(
         retained_courses.append(change.after if change is not None else existing)  # type: ignore[arg-type]
     for candidate in proposed.courses:
         if candidate.key in added_keys:
-            retained_courses.append(candidate)
+            retained_courses.append(proposed_by_key[candidate.key])
 
     removed_sources = set(current_source_owner) - set(proposed_source_owner)
     retired_by_identity = {
         SourceIdentity.from_source(retired.source): retired
         for retired in current.retired_sources
-    }
-    current_source_values = {
-        SourceIdentity.from_source(source): source
-        for course in current.courses
-        for source in course.sources
     }
     for identity in sorted(removed_sources):
         retired_by_identity[identity] = RetiredCourseSource(
@@ -363,3 +399,350 @@ def commit_configure(plan: ConfigurePlan, path: Path, *, confirmed: bool) -> boo
     if plan.has_changes:
         save_config(plan.config, path)
     return True
+
+
+def _source_from_candidate(
+    candidate: CourseCandidate, mode: InitialSyncMode
+) -> CourseSource:
+    return CourseSource(
+        provider=candidate.provider,  # type: ignore[arg-type]
+        instance=candidate.instance,
+        course_id=candidate.course_id,
+        code=candidate.code or None,
+        name=candidate.name or None,
+        term=candidate.term,
+        initial_mode=mode,
+    )
+
+
+def _content_text(content: ContentSelection, allowed: set[str]) -> str:
+    return ",".join(
+        name
+        for name in ("files", "pages", "lessons", "resources")
+        if name in allowed and getattr(content, name)
+    )
+
+
+def _merge_provider_content(
+    current: ContentSelection,
+    selected: ContentSelection,
+    provider: str,
+) -> ContentSelection:
+    updates = (
+        {"files": selected.files, "pages": selected.pages}
+        if provider == "canvas"
+        else {"lessons": selected.lessons, "resources": selected.resources}
+    )
+    return current.model_copy(update=updates)
+
+
+def _clear_provider_content(
+    current: ContentSelection, provider: str
+) -> ContentSelection:
+    updates = (
+        {"files": False, "pages": False}
+        if provider == "canvas"
+        else {"lessons": False, "resources": False}
+    )
+    return current.model_copy(update=updates)
+
+
+def run_configure_wizard(
+    *,
+    profile: str,
+    config_path: Path,
+    input_fn: Callable[[str], str],
+    output_fn: Callable[[str], None],
+    secret_resolver: Callable[[str], str],
+    canvas_catalog_loader: Callable[[str, str], tuple[CourseCandidate, ...]],
+    ed_catalog_loader: Callable[[str], tuple[CourseCandidate, ...]] | None = None,
+    dry_run: bool = False,
+) -> bool:
+    """Interactively plan and optionally commit an existing profile update."""
+    from .setup_flow import (
+        _content_selection,
+        _default_folder,
+        _initial_mode,
+        _validate_catalog_candidate,
+        _yes,
+    )
+
+    current = load_config(config_path)
+    if current.profile != profile:
+        raise ValueError("profile does not match the configuration")
+    side_text = input_fn(
+        "Provider side(s) to configure [canvas/ed/both; blank cancels]: "
+    ).strip().casefold()
+    if not side_text:
+        output_fn("Configure cancelled before provider selection; no changes made.")
+        return False
+    if side_text not in {"canvas", "ed", "both"}:
+        raise ValueError("provider selection must be canvas, ed, or both")
+    selected_providers = (
+        ("canvas", "ed") if side_text == "both" else (side_text,)
+    )
+
+    courses = {course.key: course for course in current.courses}
+    course_order = [course.key for course in current.courses]
+    platforms = current.platforms
+    new_source_modes: dict[SourceIdentity, InitialSyncMode] = {}
+    newly_created_keys: set[str] = set()
+
+    for provider_name in selected_providers:
+        # Retention is the default; detaching never deletes local output or state.
+        for key in tuple(course_order):
+            course = courses[key]
+            matching = tuple(
+                source for source in course.sources if source.provider == provider_name
+            )
+            if not matching:
+                continue
+            source = matching[0]
+            label = f"{key} ({provider_name}@{source.instance} id={source.course_id})"
+            if not _yes(
+                input_fn(
+                    f"Remove {label}? Local files and historical state will be retained. [y/N]: "
+                )
+            ):
+                continue
+            remaining = tuple(item for item in course.sources if item is not source)
+            if remaining:
+                courses[key] = course.model_copy(
+                    update={
+                        "sources": remaining,
+                        "content": _clear_provider_content(
+                            course.content, provider_name
+                        ),
+                    }
+                )
+            else:
+                del courses[key]
+                course_order.remove(key)
+
+        platform = getattr(platforms, provider_name)
+        if platform.enabled:
+            discover = _yes(
+                input_fn(f"Discover additional {provider_name} courses? [y/N]: ")
+            )
+        else:
+            discover = _yes(
+                input_fn(f"Enable {provider_name} and discover courses? [y/N]: ")
+            )
+            if discover and provider_name == "canvas":
+                base_url = input_fn(
+                    "Canvas base URL [https://canvas.sydney.edu.au/api/v1]: "
+                ).strip() or "https://canvas.sydney.edu.au/api/v1"
+                credential = input_fn(
+                    f"Canvas credential reference [keyring:canvas-ed-mcp/{profile}/canvas]: "
+                ).strip() or f"keyring:canvas-ed-mcp/{profile}/canvas"
+                platform = CanvasPlatformConfig(
+                    enabled=True, base_url=base_url, credential=credential
+                )
+                platforms = platforms.model_copy(update={"canvas": platform})
+            elif discover:
+                region = input_fn("Ed region [global]: ").strip().casefold() or "global"
+                if region != "global":
+                    raise ValueError("only the global Ed region is currently supported")
+                credential = input_fn(
+                    f"Ed credential reference [keyring:canvas-ed-mcp/{profile}/ed]: "
+                ).strip() or f"keyring:canvas-ed-mcp/{profile}/ed"
+                platform = EdPlatformConfig(
+                    enabled=True, region=region, credential=credential
+                )
+                platforms = platforms.model_copy(update={"ed": platform})
+
+        if discover:
+            if provider_name == "canvas":
+                assert isinstance(platform, CanvasPlatformConfig)
+                assert platform.base_url is not None and platform.credential is not None
+                catalog = canvas_catalog_loader(
+                    platform.base_url, secret_resolver(platform.credential)
+                )
+            else:
+                assert isinstance(platform, EdPlatformConfig)
+                assert platform.credential is not None
+                if platform.region != "global":
+                    raise ValueError("only the global Ed region is currently supported")
+                if ed_catalog_loader is None:
+                    raise ValueError("Ed catalog loader is unavailable")
+                catalog = ed_catalog_loader(secret_resolver(platform.credential))
+
+            active_identities = {
+                SourceIdentity.from_source(source)
+                for course in courses.values()
+                for source in course.sources
+            }
+            retired_identities = {
+                SourceIdentity.from_source(retired.source)
+                for retired in current.retired_sources
+            }
+            for candidate in catalog:
+                _validate_catalog_candidate(candidate, provider_name)
+                identity = SourceIdentity.from_candidate(candidate)
+                if identity in active_identities or identity in retired_identities:
+                    continue
+                label = (
+                    f"{candidate.name} | provider={candidate.provider} | "
+                    f"instance={candidate.instance} | code={candidate.code or '-'} | "
+                    f"term={candidate.term or '-'} | id={candidate.course_id}"
+                )
+                if not _yes(input_fn(f"Add {label}? [y/N]: ")):
+                    continue
+                mode = _initial_mode(
+                    input_fn(
+                        "Initial mode [baseline_from_now/import_all; "
+                        "default baseline_from_now]: "
+                    )
+                )
+                logical_key = input_fn(
+                    f"Logical course key [{candidate.key}]: "
+                ).strip() or candidate.key
+                if not _yes(
+                    input_fn(
+                        f"Confirm source {identity.label()} -> {logical_key}? [y/N]: "
+                    )
+                ):
+                    continue
+                source = _source_from_candidate(candidate, mode)
+                if logical_key in courses:
+                    existing = courses[logical_key]
+                    if any(item.provider == provider_name for item in existing.sources):
+                        raise ValueError(
+                            "logical course already contains a source from this provider"
+                        )
+                    allowed = {"files", "pages"} if provider_name == "canvas" else {
+                        "lessons", "resources"
+                    }
+                    default_content = ",".join(sorted(allowed))
+                    content_text = input_fn(
+                        f"Added {provider_name} content [{default_content}]: "
+                    ).strip() or default_content
+                    selected_content = _content_selection(content_text, allowed)
+                    courses[logical_key] = existing.model_copy(
+                        update={
+                            "sources": existing.sources + (source,),
+                            "content": _merge_provider_content(
+                                existing.content, selected_content, provider_name
+                            ),
+                        }
+                    )
+                else:
+                    folder_default = _default_folder(candidate)
+                    folder = input_fn(f"Folder [{folder_default}]: ").strip() or folder_default
+                    allowed = {"files", "pages"} if provider_name == "canvas" else {
+                        "lessons", "resources"
+                    }
+                    default_content = ",".join(sorted(allowed))
+                    content_text = input_fn(
+                        f"Content [{default_content}]: "
+                    ).strip() or default_content
+                    max_mib_text = input_fn("Maximum single-file MiB [100]: ").strip()
+                    max_mib = int(max_mib_text) if max_mib_text else 100
+                    if max_mib <= 0:
+                        raise ValueError("maximum file size must be positive")
+                    courses[logical_key] = CourseConfig(
+                        key=logical_key,
+                        folder=folder,
+                        confirmed_at=datetime.now(timezone.utc),
+                        sources=(source,),
+                        content=_content_selection(content_text, allowed),
+                        policy=DownloadPolicy(max_file_bytes=max_mib * 1024 * 1024),
+                    )
+                    course_order.append(logical_key)
+                    newly_created_keys.add(logical_key)
+                active_identities.add(identity)
+                new_source_modes[identity] = mode
+
+        provider_still_used = any(
+            source.provider == provider_name
+            for course in courses.values()
+            for source in course.sources
+        )
+        platform = getattr(platforms, provider_name)
+        if platform.enabled and not provider_still_used and _yes(
+            input_fn(f"Disable unused {provider_name} platform? [y/N]: ")
+        ):
+            disabled = (
+                CanvasPlatformConfig()
+                if provider_name == "canvas"
+                else EdPlatformConfig()
+            )
+            platforms = platforms.model_copy(update={provider_name: disabled})
+
+    for key in tuple(course_order):
+        if key in newly_created_keys:
+            continue
+        course = courses[key]
+        if not any(source.provider in selected_providers for source in course.sources):
+            continue
+        if not _yes(input_fn(f"Edit settings for {key}? [y/N]: ")):
+            continue
+        folder = input_fn(f"Folder [{course.folder}]: ").strip() or course.folder
+        editable_providers = {
+            source.provider
+            for source in course.sources
+            if source.provider in selected_providers
+        }
+        allowed: set[str] = set()
+        if "canvas" in editable_providers:
+            allowed.update(("files", "pages"))
+        if "ed" in editable_providers:
+            allowed.update(("lessons", "resources"))
+        current_content = _content_text(course.content, allowed)
+        content_text = input_fn(f"Content [{current_content}]: ").strip() or current_content
+        selected_content = _content_selection(content_text, allowed)
+        updated_content = course.content
+        for provider_name in sorted(editable_providers):
+            updated_content = _merge_provider_content(
+                updated_content, selected_content, provider_name
+            )
+        current_limit = course.policy.max_file_bytes
+        current_mib = (
+            f"{current_limit / (1024 * 1024):g}"
+            if current_limit is not None
+            else "unlimited"
+        )
+        max_mib_text = input_fn(
+            f"Maximum single-file MiB [{current_mib}; blank keeps current]: "
+        ).strip()
+        policy = course.policy
+        if max_mib_text:
+            max_mib = int(max_mib_text)
+            if max_mib <= 0:
+                raise ValueError("maximum file size must be positive")
+            policy = course.policy.model_copy(
+                update={"max_file_bytes": max_mib * 1024 * 1024}
+            )
+        courses[key] = course.model_copy(
+            update={
+                "folder": folder,
+                "content": updated_content,
+                "policy": policy,
+            }
+        )
+
+    proposed = AppConfig(
+        profile=current.profile,
+        output_root=current.output_root,
+        platforms=platforms,
+        courses=tuple(courses[key] for key in course_order),
+        retired_sources=current.retired_sources,
+    )
+    plan = build_configure_plan(
+        current, proposed, new_source_modes=new_source_modes
+    )
+    output_fn(plan.preview)
+    if dry_run:
+        output_fn("Dry-run only; no config, state, or course content was written.")
+        return False
+    if not plan.has_changes:
+        output_fn("No changes; configuration remains unchanged.")
+        return True
+    confirmed = _yes(input_fn("Commit these configuration changes? [y/N]: "))
+    committed = commit_configure(plan, config_path, confirmed=confirmed)
+    output_fn(
+        f"Configuration saved to {config_path}"
+        if committed
+        else "Configure cancelled at final confirmation; no changes made."
+    )
+    return committed

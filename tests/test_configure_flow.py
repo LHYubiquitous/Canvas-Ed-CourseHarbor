@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import dataclasses
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +22,7 @@ from canvas_ed_mcp.config import (
     CourseConfig,
     CourseSource,
     DownloadPolicy,
+    EdPlatformConfig,
     PlatformsConfig,
     load_config,
     save_config,
@@ -29,7 +33,10 @@ from canvas_ed_mcp.configure_flow import (
     InitialSyncMode,
     build_configure_plan,
     commit_configure,
+    run_configure_wizard,
 )
+from canvas_ed_mcp.providers.base import CourseCandidate
+from canvas_ed_mcp.cli import main
 
 
 CONFIRMED_AT = datetime(2026, 10, 13, tzinfo=timezone.utc)
@@ -96,7 +103,7 @@ class ConfigurePlanningTests(unittest.TestCase):
             plan = build_configure_plan(
                 current,
                 proposed,
-                new_course_modes={added.key: InitialSyncMode.BASELINE_FROM_NOW},
+                new_course_modes={added.key: InitialSyncMode.IMPORT_ALL},
             )
 
         self.assertEqual(
@@ -109,7 +116,12 @@ class ConfigurePlanningTests(unittest.TestCase):
         )
         self.assertEqual((added.key, removed.key, changed.key), plan.changed_keys)
         self.assertEqual(("folder", "policy"), plan.changes[2].fields)
-        self.assertEqual(InitialSyncMode.BASELINE_FROM_NOW, plan.initial_sync[0].mode)
+        self.assertEqual(InitialSyncMode.IMPORT_ALL, plan.initial_sync[0].mode)
+        configured_added = next(item for item in plan.config.courses if item.key == added.key)
+        self.assertEqual(
+            InitialSyncMode.IMPORT_ALL,
+            configured_added.sources[0].initial_mode,
+        )
         self.assertIn(f"+ {added.key}", plan.preview)
         self.assertIn(f"- {removed.key}", plan.preview)
         self.assertIn("local files and historical state retained", plan.preview)
@@ -289,6 +301,301 @@ class ConfigureCommitTests(unittest.TestCase):
             with self.assertRaises(ConfigureConflictError):
                 commit_configure(plan, path, confirmed=True)
             self.assertEqual(concurrent, load_config(path))
+
+
+class ConfigureWizardTests(unittest.TestCase):
+    @staticmethod
+    def answers(*values: str):
+        iterator = iter(values)
+        return lambda _prompt: next(iterator)
+
+    def test_default_retention_dry_run_does_not_resolve_or_discover(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.toml"
+            current = config(Path(temporary) / "Courses", (course("101"),))
+            save_config(current, path)
+            original = path.read_bytes()
+            calls: list[str] = []
+
+            committed = run_configure_wizard(
+                profile="default",
+                config_path=path,
+                input_fn=self.answers("canvas", "", "", ""),
+                output_fn=lambda _line: None,
+                secret_resolver=lambda _reference: calls.append("secret") or "token",
+                canvas_catalog_loader=lambda _url, _token: calls.append("canvas") or (),
+                ed_catalog_loader=lambda _token: calls.append("ed") or (),
+                dry_run=True,
+            )
+
+            self.assertFalse(committed)
+            self.assertEqual([], calls)
+            self.assertEqual(original, path.read_bytes())
+
+    def test_detach_one_side_of_mixed_course_is_preview_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "config.toml"
+            canvas_course = course("101")
+            ed_source = CourseSource(
+                provider="ed",
+                instance="edstem.org",
+                course_id="202",
+                code="TEST101",
+                initial_mode=InitialSyncMode.IMPORT_ALL,
+            )
+            mixed = canvas_course.model_copy(
+                update={"sources": canvas_course.sources + (ed_source,)}
+            )
+            current = AppConfig(
+                profile="default",
+                output_root=root / "Courses",
+                platforms=PlatformsConfig(
+                    canvas=config(root / "Courses", ()).platforms.canvas,
+                    ed=EdPlatformConfig(
+                        enabled=True,
+                        credential="env:SYNTHETIC_ED_TOKEN",
+                    ),
+                ),
+                courses=(mixed,),
+            )
+            save_config(current, path)
+            output: list[str] = []
+
+            committed = run_configure_wizard(
+                profile="default",
+                config_path=path,
+                input_fn=self.answers("ed", "y", "", ""),
+                output_fn=output.append,
+                secret_resolver=lambda _reference: self.fail("secret resolution"),
+                canvas_catalog_loader=lambda _url, _token: self.fail("Canvas discovery"),
+                ed_catalog_loader=lambda _token: self.fail("Ed discovery"),
+                dry_run=True,
+            )
+
+            self.assertFalse(committed)
+            self.assertEqual(current, load_config(path))
+            self.assertIn("ed@edstem.org", "\n".join(output))
+
+    def test_enable_ed_and_attach_exact_candidate_to_existing_course(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "config.toml"
+            existing = course("101")
+            save_config(config(root / "Courses", (existing,)), path)
+            candidate = CourseCandidate(
+                provider="ed",
+                instance="edstem.org",
+                course_id="202",
+                code="TEST101",
+                name="Synthetic Ed Course",
+                term="2026 S2",
+            )
+            calls: list[str] = []
+
+            committed = run_configure_wizard(
+                profile="default",
+                config_path=path,
+                input_fn=self.answers(
+                    "ed", "y", "", "", "y", "import_all", existing.key, "y", "", "", "y"
+                ),
+                output_fn=lambda _line: None,
+                secret_resolver=lambda reference: calls.append(reference) or "token",
+                canvas_catalog_loader=lambda _url, _token: self.fail("Canvas discovery"),
+                ed_catalog_loader=lambda token: (candidate,) if token == "token" else (),
+            )
+
+            self.assertTrue(committed)
+            updated = load_config(path)
+            self.assertTrue(updated.platforms.ed.enabled)
+            self.assertEqual(1, len(calls))
+            self.assertEqual(("canvas", "ed"), tuple(
+                source.provider for source in updated.courses[0].sources
+            ))
+            self.assertEqual(
+                InitialSyncMode.IMPORT_ALL,
+                updated.courses[0].sources[1].initial_mode,
+            )
+
+    def test_edit_preserves_initial_mode_and_policy_filters(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "config.toml"
+            existing = course(
+                "101",
+                policy=DownloadPolicy(
+                    max_file_bytes=5 * 1024 * 1024,
+                    include_extensions=(".pdf",),
+                    exclude_extensions=(".mov",),
+                    include_mime=("application/pdf",),
+                ),
+            )
+            existing = existing.model_copy(
+                update={
+                    "sources": (
+                        existing.sources[0].model_copy(
+                            update={"initial_mode": InitialSyncMode.IMPORT_ALL}
+                        ),
+                    )
+                }
+            )
+            save_config(config(root / "Courses", (existing,)), path)
+
+            committed = run_configure_wizard(
+                profile="default",
+                config_path=path,
+                input_fn=self.answers("canvas", "", "", "y", "RENAMED", "", "7", "y"),
+                output_fn=lambda _line: None,
+                secret_resolver=lambda _reference: self.fail("secret resolution"),
+                canvas_catalog_loader=lambda _url, _token: self.fail("discovery"),
+            )
+
+            self.assertTrue(committed)
+            updated = load_config(path).courses[0]
+            self.assertEqual("RENAMED", updated.folder)
+            self.assertEqual(InitialSyncMode.IMPORT_ALL, updated.sources[0].initial_mode)
+            self.assertEqual(7 * 1024 * 1024, updated.policy.max_file_bytes)
+            self.assertEqual((".pdf",), updated.policy.include_extensions)
+            self.assertEqual((".mov",), updated.policy.exclude_extensions)
+            self.assertEqual(("application/pdf",), updated.policy.include_mime)
+
+    def test_one_side_edit_preserves_other_provider_content(self) -> None:
+        for selected_provider, selected_content in (
+            ("canvas", "files"),
+            ("ed", "lessons"),
+        ):
+            with self.subTest(provider=selected_provider), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                path = root / "config.toml"
+                canvas_course = course("101")
+                mixed = canvas_course.model_copy(
+                    update={
+                        "sources": canvas_course.sources
+                        + (
+                            CourseSource(
+                                provider="ed",
+                                instance="edstem.org",
+                                course_id="202",
+                                code="TEST101",
+                            ),
+                        )
+                    }
+                )
+                current = AppConfig(
+                    profile="default",
+                    output_root=root / "Courses",
+                    platforms=PlatformsConfig(
+                        canvas=config(root / "Courses", ()).platforms.canvas,
+                        ed=EdPlatformConfig(
+                            enabled=True,
+                            credential="env:SYNTHETIC_ED_TOKEN",
+                        ),
+                    ),
+                    courses=(mixed,),
+                )
+                save_config(current, path)
+
+                self.assertTrue(
+                    run_configure_wizard(
+                        profile="default",
+                        config_path=path,
+                        input_fn=self.answers(
+                            selected_provider,
+                            "",
+                            "",
+                            "y",
+                            "",
+                            selected_content,
+                            "",
+                            "y",
+                        ),
+                        output_fn=lambda _line: None,
+                        secret_resolver=lambda _reference: self.fail("secret resolution"),
+                        canvas_catalog_loader=lambda _url, _token: self.fail("discovery"),
+                        ed_catalog_loader=lambda _token: self.fail("discovery"),
+                    )
+                )
+                updated = load_config(path).courses[0].content
+                if selected_provider == "canvas":
+                    self.assertTrue(updated.files)
+                    self.assertFalse(updated.pages)
+                    self.assertTrue(updated.lessons)
+                    self.assertTrue(updated.resources)
+                else:
+                    self.assertTrue(updated.files)
+                    self.assertTrue(updated.pages)
+                    self.assertTrue(updated.lessons)
+                    self.assertFalse(updated.resources)
+
+    def test_blank_limit_edit_preserves_exact_existing_bytes(self) -> None:
+        for limit in (None, 512 * 1024, 5 * 1024 * 1024 + 123):
+            with self.subTest(limit=limit), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                path = root / "config.toml"
+                existing = course(
+                    "101", policy=DownloadPolicy(max_file_bytes=limit)
+                )
+                current = config(root / "Courses", (existing,))
+                save_config(current, path)
+
+                output: list[str] = []
+                self.assertTrue(
+                    run_configure_wizard(
+                        profile="default",
+                        config_path=path,
+                        input_fn=self.answers(
+                            "canvas", "", "", "y", "RENAMED", "", "", "y"
+                        ),
+                        output_fn=output.append,
+                        secret_resolver=lambda _reference: self.fail("secret resolution"),
+                        canvas_catalog_loader=lambda _url, _token: self.fail("discovery"),
+                    )
+                )
+                updated = load_config(path).courses[0]
+                self.assertEqual("RENAMED", updated.folder)
+                self.assertEqual(limit, updated.policy.max_file_bytes)
+
+    def test_confirmed_noop_reports_unchanged_without_rewriting_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "config.toml"
+            save_config(config(root / "Courses", (course("101"),)), path)
+            before = path.read_bytes()
+            output: list[str] = []
+
+            succeeded = run_configure_wizard(
+                profile="default",
+                config_path=path,
+                input_fn=self.answers("canvas", "", "", ""),
+                output_fn=output.append,
+                secret_resolver=lambda _reference: self.fail("secret resolution"),
+                canvas_catalog_loader=lambda _url, _token: self.fail("discovery"),
+            )
+
+            self.assertTrue(succeeded)
+            self.assertEqual(before, path.read_bytes())
+            self.assertIn("No changes; configuration remains unchanged.", output)
+
+    def test_cli_sanitizes_unexpected_provider_failure(self) -> None:
+        stderr = io.StringIO()
+        with patch(
+            "canvas_ed_mcp.configure_flow.run_configure_wizard",
+            side_effect=RuntimeError("secret-value-from-provider"),
+        ), redirect_stderr(stderr):
+            exit_code = main(
+                [
+                    "configure",
+                    "--profile",
+                    "default",
+                    "--config",
+                    "synthetic.toml",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(2, exit_code)
+        self.assertEqual("configure failed (provider_unavailable)", stderr.getvalue().strip())
+        self.assertNotIn("secret-value", stderr.getvalue())
 
 
 if __name__ == "__main__":

@@ -352,6 +352,147 @@ class EdProviderTests(unittest.TestCase):
         self.assertEqual(1, len(asset_requests))
         self.assertEqual(2, len(api_requests))
 
+    def test_default_ed_provider_embeds_australian_static_assets_without_auth(self) -> None:
+        image_url = "https://static.au.edusercontent.com/asset.png?signature=synthetic-canary"
+        asset_requests: list[httpx.Request] = []
+
+        def api_respond(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/courses/1/lessons":
+                return httpx.Response(200, json={"lessons": [{"id": 9}]})
+            if request.url.path == "/api/lessons/9":
+                return httpx.Response(
+                    200,
+                    json={
+                        "lesson": {
+                            "id": 9,
+                            "title": "Australian asset",
+                            "slides": [{
+                                "index": 0,
+                                "type": "html",
+                                "html": f'<img src="{image_url}" alt="Diagram">',
+                            }],
+                        }
+                    },
+                )
+            raise AssertionError(str(request.url))
+
+        def asset_respond(request: httpx.Request) -> httpx.Response:
+            asset_requests.append(request)
+            self.assertNotIn("authorization", request.headers)
+            self.assertNotIn("cookie", request.headers)
+            return httpx.Response(
+                200,
+                content=b"PNG",
+                headers={"content-type": "image/png", "content-length": "3"},
+            )
+
+        provider = EdProvider(
+            "synthetic-token",
+            client=httpx.Client(transport=httpx.MockTransport(api_respond)),
+            asset_client=httpx.Client(transport=httpx.MockTransport(asset_respond)),
+        )
+        try:
+            lesson = provider.list_items(
+                "1", kinds=frozenset({RemoteKind.LESSON})
+            ).require_complete()[0]
+            rendered = provider.render_html(lesson)
+        finally:
+            provider.close()
+
+        self.assertIn("data:image/png;base64,UE5H", rendered.document)
+        self.assertNotIn("signature=", rendered.document)
+        self.assertEqual((), rendered.issue_codes)
+        self.assertEqual(1, len(asset_requests))
+
+    def test_default_ed_asset_allowlist_does_not_trust_arbitrary_siblings(self) -> None:
+        provider = EdProvider(
+            "synthetic-token",
+            client=httpx.Client(
+                transport=httpx.MockTransport(lambda request: httpx.Response(500))
+            ),
+            asset_client=httpx.Client(
+                transport=httpx.MockTransport(lambda request: httpx.Response(500))
+            ),
+        )
+        try:
+            with self.assertRaises(ProviderError) as caught:
+                provider._validate_asset_url(
+                    "https://static.attacker.edusercontent.com/image.png"
+                )
+        finally:
+            provider.close()
+
+        self.assertEqual("unsafe_redirect", caught.exception.category)
+
+    def test_lesson_html_accepts_formatting_whitespace(self) -> None:
+        def respond(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/lessons"):
+                return httpx.Response(200, json={"lessons": [{"id": 9}]})
+            return httpx.Response(
+                200,
+                json={
+                    "lesson": {
+                        "id": 9,
+                        "title": "Formatted HTML",
+                        "slides": [{
+                            "index": 0,
+                            "type": "html",
+                            "html": "\n\t<section>Safe content</section>\r\n",
+                        }],
+                    }
+                },
+            )
+
+        provider = EdProvider(
+            "synthetic-token",
+            client=httpx.Client(transport=httpx.MockTransport(respond)),
+            asset_client=httpx.Client(
+                transport=httpx.MockTransport(lambda request: httpx.Response(500))
+            ),
+        )
+        try:
+            batch = provider.list_items("1", kinds=frozenset({RemoteKind.LESSON}))
+            self.assertEqual((), batch.issues)
+            rendered = provider.render_html(batch.require_complete()[0])
+        finally:
+            provider.close()
+
+        self.assertIn("Safe content", rendered.document)
+
+    def test_lesson_html_rejects_disallowed_control_characters(self) -> None:
+        def respond(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/lessons"):
+                return httpx.Response(200, json={"lessons": [{"id": 9}]})
+            return httpx.Response(
+                200,
+                json={
+                    "lesson": {
+                        "id": 9,
+                        "title": "Invalid HTML",
+                        "slides": [{
+                            "index": 0,
+                            "type": "html",
+                            "html": "<p>unsafe\x00content</p>",
+                        }],
+                    }
+                },
+            )
+
+        provider = EdProvider(
+            "synthetic-token",
+            client=httpx.Client(transport=httpx.MockTransport(respond)),
+            asset_client=httpx.Client(
+                transport=httpx.MockTransport(lambda request: httpx.Response(500))
+            ),
+        )
+        try:
+            batch = provider.list_items("1", kinds=frozenset({RemoteKind.LESSON}))
+        finally:
+            provider.close()
+
+        self.assertEqual((), batch.items)
+        self.assertEqual("item_schema_drift", batch.issues[0].code)
+
     def test_image_failure_uses_inline_placeholder_and_marks_retry(self) -> None:
         image_url = "https://cdn.example.test/missing.png?token=private"
 

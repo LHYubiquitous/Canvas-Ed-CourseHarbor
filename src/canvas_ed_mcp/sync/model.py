@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePosixPath
 
+from canvas_ed_mcp.initial import InitialSyncMode
+
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 from canvas_ed_mcp.validation import validate_portable_component, validate_provider_instance

@@ -29,14 +29,18 @@ class CIWorkflowTests(unittest.TestCase):
     def test_workflow_builds_tests_installed_cli_and_audits_artifacts(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn("python -m build", text)
+        self.assertNotIn("uv==0.9.30", text)
+        self.assertGreaterEqual(text.count('uv==0.11.28'), 2)
+        self.assertIn("ci/build_release_candidate.py", text)
+        self.assertIn("uv run --locked --all-extras", text)
+        self.assertNotIn("python -m build", text)
         self.assertIn("unittest discover -s tests", text)
         self.assertIn("ci/verify_distribution.py", text)
         self.assertIn("ci/verify_release_metadata.py", text)
         self.assertIn("ci/smoke_installed.py", text)
-        self.assertIn("ci/release_gate.py", text)
         self.assertIn("Install the audited clean-source candidate", text)
-        self.assertIn("canvas-ed-mcp-0.1.0rc1-source.tar.gz", text)
+        self.assertIn("canvas-ed-mcp-${VERSION}-source.tar.gz", text)
+        self.assertNotIn("--version 0.1.0rc1", text)
         self.assertIn("uv sync --locked --all-extras --no-dev", text)
         self.assertIn('"--force-reinstall", str(wheel)', text)
         self.assertLess(

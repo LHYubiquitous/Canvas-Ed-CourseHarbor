@@ -28,5 +28,11 @@
 | SRC-022 | https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/migration.md | MCP Python SDK v1→v2 breaking changes 与依赖变化 | VERIFIED official |
 | SRC-023 | https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/whats-new.md | `MCPServer` rename、2026-07-28 protocol 与 backward negotiation | VERIFIED official |
 | SRC-024 | https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.2.0 | 当前 reviewed stable v2 release 与行为变化 | VERIFIED official release |
+| SRC-025 | https://static.au.edusercontent.com/ | owner-device 真实 Ed Lesson 审核观察到的精确静态资源 host；仅记录 origin，不保留路径或签名 query。Ed 公开 API/asset 文档仍不可用 | OWNER-DEVICE OBSERVED; official documentation DEGRADED |
+| SRC-026 | https://developerdocs.instructure.com/services/canvas/resources/modules | Canvas Modules 与 paginated module items；File/Page module item 类型和顺序 | VERIFIED official |
+| SRC-027 | https://developerdocs.instructure.com/services/canvas/file.all_resources/files | Course Files list、File metadata、size/content-type/download URL | VERIFIED official |
+| SRC-028 | https://developerdocs.instructure.com/services/canvas/resources/pages | Page stable locator、title/body 与 single-page lookup | VERIFIED official |
+| SRC-029 | https://community.instructure.com/en/kb/articles/485223-canvas-domain-email-and-server-management | Instructure 官方列出的 Canvas browser-security/content domains，包括动态 `*.canvas-user-content.com` 与 Canvas images/file storage 使用的 `*.inscloudgate.net` | VERIFIED official resource document |
+| SRC-030 | https://developerdocs.instructure.com/services/canvas/resources/assignments | Canvas course Assignments list、`due_at`、`points_possible`、quiz assignment indicator、`order_by=due_at` 与 user-applicable assignment overrides | VERIFIED official |
 
 动态版本、release、平台支持和政策在真正发布前必须重新检查，不能把本表当作永久事实。

@@ -20,12 +20,28 @@ from ci.release_gate import (
     ReleaseAuditError,
     audit_public_files,
     build_source_archive,
+    read_project_version,
     select_public_files,
 )
 from ci.verify_release_metadata import MetadataAuditError, compare_generated_metadata
 
 
 class ReleaseGateTests(unittest.TestCase):
+    def test_project_version_reader_rejects_runtime_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / "src/canvas_ed_mcp"
+            package.mkdir(parents=True)
+            (root / "pyproject.toml").write_text(
+                '[project]\nname = "canvas-ed-mcp"\nversion = "0.2.0rc4"\n',
+                encoding="utf-8",
+            )
+            (package / "__init__.py").write_text(
+                '__version__ = "0.2.0rc11"\n', encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ReleaseAuditError, "version_mismatch"):
+                read_project_version(root)
+
     def test_repository_release_metadata_is_complete_and_consistent(self) -> None:
         project = tomllib.loads(
             (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -36,8 +52,14 @@ class ReleaseGateTests(unittest.TestCase):
         version_match = re.search(r'^__version__ = "([^"]+)"$', package_init, re.MULTILINE)
         self.assertIsNotNone(version_match)
         version = project["project"]["version"]
-        self.assertEqual("0.1.0rc1", version)
+        self.assertEqual("0.2.0rc11", version)
         self.assertEqual(version, version_match.group(1))
+        development_dependencies = project["dependency-groups"]["dev"]
+        runtime_dependencies = project["project"]["dependencies"]
+        self.assertIn("tzdata>=2024.1; sys_platform == 'win32'", runtime_dependencies)
+        self.assertTrue(any(item.startswith("build") for item in development_dependencies))
+        self.assertTrue(any(item.startswith("setuptools") for item in development_dependencies))
+        self.assertTrue(any(item.startswith("wheel") for item in development_dependencies))
 
         pylock = tomllib.loads((REPOSITORY_ROOT / "pylock.toml").read_text("utf-8"))
         uvlock = tomllib.loads((REPOSITORY_ROOT / "uv.lock").read_text("utf-8"))
@@ -45,6 +67,10 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual("CycloneDX", sbom["bomFormat"])
         self.assertEqual("1.5", sbom["specVersion"])
         self.assertEqual(version, sbom["metadata"]["component"]["version"])
+        self.assertEqual(
+            [{"vendor": "Astral Software Inc.", "name": "uv", "version": "0.11.28"}],
+            sbom["metadata"]["tools"],
+        )
         locked = {(item["name"].casefold(), item["version"]) for item in pylock["packages"]}
         components = {
             (item["name"].casefold(), item["version"]) for item in sbom["components"]
@@ -54,7 +80,14 @@ class ReleaseGateTests(unittest.TestCase):
             for item in uvlock["package"]
             if item["name"] != project["project"]["name"]
         }
-        self.assertEqual(uv_packages, locked)
+        development_only = {
+            ("build", "1.6.1"),
+            ("pyproject-hooks", "1.3.3"),
+            ("setuptools", "84.0.0"),
+            ("wheel", "0.48.0"),
+        }
+        self.assertEqual(uv_packages, locked | development_only)
+        self.assertTrue(locked.isdisjoint(development_only))
         self.assertEqual(locked, components)
 
         notices = (REPOSITORY_ROOT / "THIRD_PARTY_NOTICES.md").read_text(
@@ -76,6 +109,8 @@ class ReleaseGateTests(unittest.TestCase):
             "TASKS.md",
             "canvas_ed_mcp.py",
             "sync_courses.py",
+            "docs/CANVAS_SYNC_MANUAL_TEST.md",
+            "docs/ED_SYNC_MANUAL_TEST.md",
             "tests/test_mcp_config.py",
             "tests/test_sync_output.py",
         ):

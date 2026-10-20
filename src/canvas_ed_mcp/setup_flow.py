@@ -16,14 +16,17 @@ from .config import (
     DownloadPolicy,
     EdPlatformConfig,
     PlatformsConfig,
-    save_config,
+    save_new_config,
 )
 from .course_mapping import (
     CourseMappingChoice,
     MappingInitialSelection,
+    MappingSourceChoice,
     build_mapping_plan,
 )
+from .initial import InitialSyncMode
 from .providers.base import CourseCandidate
+from .course_mapping import SourceIdentity
 
 
 CatalogLoader = Callable[[], tuple[CourseCandidate, ...]]
@@ -54,6 +57,10 @@ class SetupPlan:
     config: AppConfig
     preview: str
     initial_sync: tuple[MappingInitialSelection, ...] = ()
+
+
+class SetupConflictError(RuntimeError):
+    """The target profile already exists and must be changed through configure."""
 
 
 def discover_courses(
@@ -147,16 +154,61 @@ def build_setup_plan(
     return SetupPlan(config=config, preview="\n".join(preview_lines))
 
 
-def commit_setup(plan: SetupPlan, path: Path, *, confirmed: bool) -> bool:
+def commit_setup(
+    plan: SetupPlan,
+    path: Path,
+    *,
+    confirmed: bool,
+    warning_fn: Callable[[str], None] | None = None,
+) -> bool:
     """Commit only after the caller's explicit final confirmation."""
     if not confirmed:
         return False
-    save_config(plan.config, path)
+    try:
+        cleanup_pending = save_new_config(plan.config, path)
+    except FileExistsError as exc:
+        raise SetupConflictError(
+            "configuration already exists; use configure instead of setup"
+        ) from exc
+    if cleanup_pending and warning_fn is not None:
+        warning_fn("setup warning (config_cleanup_pending)")
     return True
 
 
 def _yes(value: str) -> bool:
     return value.strip().casefold() in {"y", "yes"}
+
+
+def _initial_mode(value: str) -> InitialSyncMode:
+    normalized = value.strip().casefold().replace("-", "_")
+    if not normalized or normalized in {"baseline", "baseline_from_now"}:
+        return InitialSyncMode.BASELINE_FROM_NOW
+    if normalized in {"import", "import_all"}:
+        return InitialSyncMode.IMPORT_ALL
+    raise ValueError("initial mode must be baseline_from_now or import_all")
+
+
+def _content_selection(value: str, allowed: set[str]) -> ContentSelection:
+    selected = {item.strip().casefold() for item in value.split(",") if item.strip()}
+    if not selected.issubset(allowed):
+        raise ValueError(f"content choices must be: {', '.join(sorted(allowed))}")
+    return ContentSelection(
+        files="files" in selected,
+        pages="pages" in selected,
+        lessons="lessons" in selected,
+        resources="resources" in selected,
+    )
+
+
+def _validate_catalog_candidate(candidate: CourseCandidate, provider: str) -> None:
+    if not isinstance(candidate, CourseCandidate) or candidate.provider != provider:
+        raise ValueError("catalog candidate does not match its provider")
+    SourceIdentity.from_candidate(candidate)
+    for value in (candidate.code, candidate.name, candidate.term):
+        if value is not None and any(
+            ord(character) < 32 or ord(character) == 127 for character in value
+        ):
+            raise ValueError("catalog display text contains control characters")
 
 
 def run_setup_wizard(
@@ -167,16 +219,168 @@ def run_setup_wizard(
     output_fn: Callable[[str], None],
     secret_resolver: Callable[[str], str],
     canvas_catalog_loader: Callable[[str, str], tuple[CourseCandidate, ...]],
+    ed_catalog_loader: Callable[[str], tuple[CourseCandidate, ...]] | None = None,
     default_output_root: Path,
     dry_run: bool = False,
 ) -> bool:
-    """Run the Canvas Phase 1 wizard; every provider/course/final choice is opt-in."""
-    provider = input_fn("Provider to enable [canvas; blank cancels]: ").strip().casefold()
+    """Run the interactive setup wizard; every provider/course/final choice is opt-in."""
+    if config_path.exists():
+        raise SetupConflictError(
+            "configuration already exists; use configure instead of setup"
+        )
+    provider = input_fn(
+        "Provider(s) to enable [canvas/ed/both; blank cancels]: "
+    ).strip().casefold()
     if not provider:
         output_fn("Setup cancelled before provider selection; no changes made.")
         return False
-    if provider != "canvas":
-        raise ValueError("Phase 1 setup supports Canvas only; Ed arrives in Phase 3")
+    if provider not in {"canvas", "ed", "both"}:
+        raise ValueError("provider selection must be canvas, ed, or both")
+
+    # Keep the established Canvas-only interaction stable for existing profiles.
+    if provider == "canvas":
+        return _run_canvas_only_setup(
+            profile=profile,
+            config_path=config_path,
+            input_fn=input_fn,
+            output_fn=output_fn,
+            secret_resolver=secret_resolver,
+            canvas_catalog_loader=canvas_catalog_loader,
+            default_output_root=default_output_root,
+            dry_run=dry_run,
+        )
+
+    canvas = CanvasPlatformConfig()
+    ed = EdPlatformConfig()
+    catalogs: dict[str, tuple[CourseCandidate, ...]] = {}
+    if provider == "both":
+        base_url = input_fn(
+            "Canvas base URL [https://canvas.sydney.edu.au/api/v1]: "
+        ).strip() or "https://canvas.sydney.edu.au/api/v1"
+        credential = input_fn(
+            f"Canvas credential reference [keyring:canvas-ed-mcp/{profile}/canvas]: "
+        ).strip() or f"keyring:canvas-ed-mcp/{profile}/canvas"
+        canvas = CanvasPlatformConfig(
+            enabled=True, base_url=base_url, credential=credential
+        )
+        catalogs["canvas"] = canvas_catalog_loader(
+            base_url, secret_resolver(credential)
+        )
+
+    region = input_fn("Ed region [global]: ").strip().casefold() or "global"
+    if region != "global":
+        raise ValueError("only the global Ed region is currently supported")
+    ed_credential = input_fn(
+        f"Ed credential reference [keyring:canvas-ed-mcp/{profile}/ed]: "
+    ).strip() or f"keyring:canvas-ed-mcp/{profile}/ed"
+    if ed_catalog_loader is None:
+        raise ValueError("Ed catalog loader is unavailable")
+    ed = EdPlatformConfig(enabled=True, region=region, credential=ed_credential)
+    catalogs["ed"] = ed_catalog_loader(secret_resolver(ed_credential))
+
+    output_text = input_fn(f"Output root [{default_output_root}]: ").strip()
+    output_root = (
+        Path(output_text).expanduser().resolve() if output_text else default_output_root
+    )
+
+    grouped: dict[str, list[tuple[CourseCandidate, InitialSyncMode]]] = {}
+    for provider_name in ("canvas", "ed"):
+        for candidate in catalogs.get(provider_name, ()):
+            _validate_catalog_candidate(candidate, provider_name)
+            label = (
+                f"{candidate.name} | provider={candidate.provider} | "
+                f"instance={candidate.instance} | code={candidate.code or '-'} | "
+                f"term={candidate.term or '-'} | id={candidate.course_id}"
+            )
+            if not _yes(input_fn(f"Select {label}? [y/N]: ")):
+                continue
+            mode = _initial_mode(
+                input_fn(
+                    "Initial mode [baseline_from_now/import_all; "
+                    "default baseline_from_now]: "
+                )
+            )
+            logical_key = input_fn(
+                f"Logical course key [{candidate.key}]: "
+            ).strip() or candidate.key
+            grouped.setdefault(logical_key, []).append((candidate, mode))
+
+    mappings: list[CourseMappingChoice] = []
+    for logical_key, selections in grouped.items():
+        identities = ", ".join(
+            f"{candidate.provider}@{candidate.instance} id={candidate.course_id}"
+            for candidate, _ in selections
+        )
+        if not _yes(input_fn(f"Confirm mapping {logical_key}: {identities}? [y/N]: ")):
+            continue
+        default_folder = _default_folder(selections[0][0])
+        folder = input_fn(f"Folder [{default_folder}]: ").strip() or default_folder
+        present = {candidate.provider for candidate, _ in selections}
+        allowed: set[str] = set()
+        if "canvas" in present:
+            allowed.update(("files", "pages"))
+        if "ed" in present:
+            allowed.update(("lessons", "resources"))
+        default_content = ",".join(
+            item for item in ("files", "pages", "lessons", "resources") if item in allowed
+        )
+        categories = input_fn(f"Content [{default_content}]: ").strip() or default_content
+        max_mib_text = input_fn("Maximum single-file MiB [100]: ").strip()
+        max_mib = int(max_mib_text) if max_mib_text else 100
+        if max_mib <= 0:
+            raise ValueError("maximum file size must be positive")
+        mappings.append(
+            CourseMappingChoice(
+                course_key=logical_key,
+                sources=tuple(
+                    MappingSourceChoice(
+                        candidate.key, confirmed=True, initial_mode=mode
+                    )
+                    for candidate, mode in selections
+                ),
+                confirmed=True,
+                folder=folder,
+                content=_content_selection(categories, allowed),
+                policy=DownloadPolicy(max_file_bytes=max_mib * 1024 * 1024),
+            )
+        )
+
+    request = SetupRequest(
+        profile=profile,
+        output_root=output_root,
+        canvas=canvas,
+        ed=ed,
+        mappings=tuple(mappings),
+    )
+    plan = build_setup_plan(request, catalogs)
+    output_fn(plan.preview)
+    if dry_run:
+        output_fn("Dry-run only; no config, state, or course content was written.")
+        return False
+    confirmed = _yes(input_fn("Commit this configuration? [y/N]: "))
+    committed = commit_setup(
+        plan, config_path, confirmed=confirmed, warning_fn=output_fn
+    )
+    output_fn(
+        f"Configuration saved to {config_path}"
+        if committed
+        else "Setup cancelled at final confirmation; no changes made."
+    )
+    return committed
+
+
+def _run_canvas_only_setup(
+    *,
+    profile: str,
+    config_path: Path,
+    input_fn: Callable[[str], str],
+    output_fn: Callable[[str], None],
+    secret_resolver: Callable[[str], str],
+    canvas_catalog_loader: Callable[[str, str], tuple[CourseCandidate, ...]],
+    default_output_root: Path,
+    dry_run: bool,
+) -> bool:
+    """Preserve the reviewed Canvas-only setup interaction."""
 
     base_url = input_fn(
         "Canvas base URL [https://canvas.sydney.edu.au/api/v1]: "
@@ -191,6 +395,7 @@ def run_setup_wizard(
     catalog = canvas_catalog_loader(base_url, token)
     choices: dict[str, CourseChoice] = {}
     for candidate in catalog:
+        _validate_catalog_candidate(candidate, "canvas")
         label = (
             f"{candidate.name} | code={candidate.code or '-'} | "
             f"term={candidate.term or '-'} | id={candidate.course_id}"
@@ -236,7 +441,9 @@ def run_setup_wizard(
         output_fn("Dry-run only; no config, state, or course content was written.")
         return False
     confirmed = _yes(input_fn("Commit this configuration? [y/N]: "))
-    committed = commit_setup(plan, config_path, confirmed=confirmed)
+    committed = commit_setup(
+        plan, config_path, confirmed=confirmed, warning_fn=output_fn
+    )
     output_fn(
         f"Configuration saved to {config_path}"
         if committed

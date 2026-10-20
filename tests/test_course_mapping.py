@@ -95,6 +95,10 @@ class CourseMappingTests(unittest.TestCase):
             [("canvas", "canvas-1"), ("ed", "ed-1")],
             [(source.provider, source.course_id) for source in course.sources],
         )
+        self.assertEqual(
+            [InitialSyncMode.BASELINE_FROM_NOW, InitialSyncMode.IMPORT_ALL],
+            [source.initial_mode for source in course.sources],
+        )
         self.assertEqual(2, len(plan.initial_sync))
         self.assertIn("canvas@canvas.invalid id=canvas-1", plan.preview)
         self.assertIn("ed@ed.invalid id=ed-1", plan.preview)
