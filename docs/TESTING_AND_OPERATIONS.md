@@ -1,7 +1,8 @@
 # 测试、部署与运行
 
-> 当前 GitHub prerelease 为 `v0.2.0rc11`。三系统 private CI、distribution audit
-> 与 owner-device 功能核验已经完成。实时发布状态以 public repository 的
+> 当前 GitHub prerelease 为 `v0.2.0rc11`；当前源码候选为 `v0.2.0rc12`。rc12 本地
+> automated release gate 与三系统 remote CI 已通过；owner-device 功能核验仍引用
+> rc9–rc11 的历史证据，不视为 rc12 重跑。实时发布状态以 public repository 的
 > GitHub Release 页面为准；PyPI 未授权、未执行。
 
 ## 验证层级
@@ -107,5 +108,9 @@ rc10 commit `f178c27` 的 private CI 已在 Windows/macOS/Linux、Python 3.10–
 rc11 只调整版本、公开项目链接和文档。其本地 gate 为 331 tests PASS（1 个预期
 Windows symlink skip），固定 `uv 0.11.28` 的 lock/SBOM 审计、确定性 packet、
 Python 3.14 wheel/clean-source 双安装和 MCP smoke 均为 PASS；private remote CI
-将在候选提交推送后执行。Linux owner-device keyring/desktop launcher 仍为
+已经通过。rc12 进一步增加完整中文 README、Canvas token 设置路径和澳洲区 Ed token
+入口；本地 gate 为 332 tests PASS（1 个预期 skip），42-entry wheel、99-entry sdist
+与 127-file clean-source 确定性审核 PASS。commit `7340b14` 的 rc12 remote CI 已在
+Windows/macOS/Linux、Python 3.10–3.15 以及独立 distribution build/audit job 全部通过。
+Linux owner-device keyring/desktop launcher 仍为
 `NOT_RUN`，PyPI 仍为 `NOT_RUN / NOT AUTHORIZED`。

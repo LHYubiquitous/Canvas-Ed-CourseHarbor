@@ -3,6 +3,21 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
+## [0.2.0rc12] - 2026-10-20
+
+### User documentation
+
+- Adds a complete Simplified Chinese README and links it from the English README.
+- Documents the exact Canvas settings flow for manual token generation and the
+  Australian Ed API-token page.
+- Expands first-run setup, native launchers, CLI/MCP use, upgrades, rollback, and
+  troubleshooting into step-by-step operational guidance.
+- Includes the Chinese README in the reviewed public-source and source-distribution
+  allowlists without changing runtime behavior.
+
+The published `0.2.0rc11` release and its tag remain immutable; rc12 is a new source
+candidate until its release gate and publication complete.
+
 ## [0.2.0rc11] - 2026-10-20
 
 ### Release documentation

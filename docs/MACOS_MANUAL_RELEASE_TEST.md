@@ -1,6 +1,6 @@
 # macOS Owner-Device Release Candidate Test
 
-> Target: `canvas-ed-mcp 0.2.0rc11` on the repository owner's Mac.
+> Target: `canvas-ed-mcp 0.2.0rc12` on the repository owner's Mac.
 > This checklist verifies native macOS behavior that GitHub-hosted runners cannot
 > prove: Keychain prompts, the local MCP host, and the private legacy launcher.
 > Record every unchecked item as `NOT_RUN`; do not infer a pass.
@@ -21,7 +21,7 @@ ignored credentials, state, course output, or uncommitted work.
 - Private repository: `https://github.com/LHYubiquitous/canvas-ed-mcp.git`
 - Branch: `hy/phase-3-4-portability`
 - Verified baseline ancestor: `c305be28882dcedb3f93fd197a9218746c4d05d2`
-- Expected package version: `0.2.0rc11`
+- Expected package version: `0.2.0rc12`
 - Result vocabulary: `PASS`, `FAIL`, `NOT_RUN`, or `DEGRADED`
 
 Safety rules:
@@ -89,8 +89,8 @@ uv pip check
 
 Expected results:
 
-- Version is exactly `canvas-ed-mcp 0.2.0rc11` or an equivalent display containing
-  `0.2.0rc11`.
+- Version is exactly `canvas-ed-mcp 0.2.0rc12` or an equivalent display containing
+  `0.2.0rc12`.
 - `doctor --show-paths` reports macOS user locations and does not create course
   output or print any credential value.
 - `course-sync --help` succeeds, but this only verifies the reserved compatibility

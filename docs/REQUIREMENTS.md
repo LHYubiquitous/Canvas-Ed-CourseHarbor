@@ -24,10 +24,10 @@
 | REQ-011 | 配置、状态、日志和用户资料分离，支持多个 profile/output root | MUST | inferred | 一个用户可创建两个 profile，互不认领/覆盖 state | IMPLEMENTED; synthetic + isolated Windows profiles PASS |
 | REQ-012 | 课程映射使用稳定平台 ID + instance identity，不再只按 code 猜测 | MUST | code gap | 同 code 不同 term 同时存在时能明确选择且不会串课 | IMPLEMENTED; synthetic + Windows discovery PASS |
 | REQ-013 | 安装/重配置必须有 dry-run/preview 和明确确认；默认无破坏性动作 | MUST | safety | 取消确认时 config/state/资料均不变 | IMPLEMENTED; synthetic + owner-device no-op dry-runs PASS |
-| REQ-014 | 打包成标准 Python project，提供稳定 console commands | SHOULD | portability | clean venv 可安装，`canvas-ed-mcp --help` / `course-sync --help` 可运行 | IMPLEMENTED; rc11 local wheel and clean-source gate PASS |
+| REQ-014 | 打包成标准 Python project，提供稳定 console commands | SHOULD | portability | clean venv 可安装，`canvas-ed-mcp --help` / `course-sync --help` 可运行 | IMPLEMENTED; rc12 local deterministic build gate PASS |
 | REQ-015 | 建立脱敏日志、诊断包和明确退出码 | SHOULD | operations | 失败可定位且日志不含 Bearer/signed query/账号原始 payload | PARTIAL: stable redacted CLI diagnostics; standalone support bundle not implemented |
 | REQ-016 | 分离通用产品代码与 legacy/personal scripts/data | MUST | publication | release manifest 不含课程专用数据、绝对路径、凭据/state/cache | IMPLEMENTED; fail-closed allowlist |
-| REQ-017 | 公开发布前完成依赖许可、版权归属、秘密与历史扫描 | MUST | user + publication gate | audit + 人工 review 通过并保留 THIRD_PARTY_NOTICES | rc11 local automated audit PASS; remote CI pending push |
+| REQ-017 | 公开发布前完成依赖许可、版权归属、秘密与历史扫描 | MUST | user + publication gate | audit + 人工 review 通过并保留 THIRD_PARTY_NOTICES | rc11 published gate PASS; rc12 local automated gate and three-system remote CI PASS |
 | REQ-018 | MCP 工具按启用 provider 暴露或给出清晰 unavailable 状态 | SHOULD | portability | Canvas-only 不要求 Ed；Ed-only 不要求 Canvas/Gradescope | MOCK_VERIFIED via direct + in-memory protocol + Windows stdio tests |
 
 ## MUST 的 Given / When / Then 摘要

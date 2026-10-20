@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "canvas-ed-mcp"
-version = "0.2.0rc11"
+version = "0.2.0rc12"
 description = "Portable, local-first Canvas and Ed course sync with an MCP server"
 readme = "README.md"
 requires-python = ">=3.10"

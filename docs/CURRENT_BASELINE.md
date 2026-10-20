@@ -58,10 +58,11 @@ Phase 0 在 2026-10-13 又增加 13 个 synthetic/mock tests；当前 Windows �
 
 ## Portable 0.2 status
 
-The current private tree targets documentation and metadata candidate `0.2.0rc11`.
+The current private tree targets documentation candidate `0.2.0rc12`.
 The published `v0.1.0rc1` remains a separate immutable artifact. rc10 product behavior
-completed the Windows/macOS owner review and three-system private CI; rc11 repeats the
-automated gate before any public repository update, tag, or GitHub prerelease.
+completed the Windows/macOS owner review and three-system private CI; rc12 retains the
+same runtime behavior but requires a fresh automated gate before any public repository
+update, tag, or GitHub prerelease.
 
 Portable `canvas-ed-mcp sync` now composes the same protected decision/storage/state
 primitives for explicitly configured Canvas and Ed sources. Canvas discovery includes
@@ -72,7 +73,7 @@ configured origin, and a separate credential-free client defaults to the exact C
 hostname allowlist. Reviewed Canvas image redirects may follow only the ordered exact
 origin → `*.canvas-user-content.com` → `*.inscloudgate.net` chain, with one internal
 inscloudgate delegation before exact-origin pinning; other DNS/CDN hosts fail closed.
-Synthetic status is 309 tests passing with one expected Windows symlink-privilege
+Synthetic status is 332 tests passing with one expected Windows symlink-privilege
 skip. Real Canvas content is `HUMAN_VERIFIED_WITH_WARNINGS`: isolated
 import, embedded-image and HTML safety audits, idempotency, secret scan, plus desktop
 and narrow Chromium rendering passed; course-wide Files remains partial after a

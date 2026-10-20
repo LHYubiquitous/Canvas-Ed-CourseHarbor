@@ -13,7 +13,7 @@
 | SRC-007 | https://github.com/ucfopen/canvasapi/releases | 2026 release activity；具体版本应在实施时重查 | VERIFIED repository |
 | SRC-008 | https://github.com/bunizao/edstem-cli | Ed CLI/MCP、course selection、lesson files 与 existing-file protection 参考 | VERIFIED repository |
 | SRC-009 | https://github.com/hschafer/edstem | MIT、非官方 Python Ed wrapper | VERIFIED repository |
-| SRC-010 | https://edstem.org/settings/api-tokens | Ed token 入口；需要登录，未在本次实际账户中验证 | UNVERIFIED authenticated |
+| SRC-010 | https://edstem.org/au/settings/api-tokens | Ed 澳洲区 token 入口；需要登录，页面路径由 owner device 确认 | OWNER-DEVICE CONFIRMED authenticated |
 | SRC-011 | https://github.com/modelcontextprotocol/python-sdk | 官方 MCP Python SDK；v2 stable、v1 pin/migration 信息 | VERIFIED official repo |
 | SRC-012 | https://github.com/jaraco/keyring | Python system keyring backends、限制和 MIT license | VERIFIED repository |
 | SRC-013 | https://platformdirs.readthedocs.io/en/stable/ | 跨平台 config/state/user-media path | VERIFIED docs |

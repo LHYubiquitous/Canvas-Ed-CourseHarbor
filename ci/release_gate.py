@@ -41,6 +41,7 @@ _REQUIRED_PUBLIC_FILES = frozenset(
         "LICENSE",
         "MANIFEST.in",
         "README.md",
+        "README.zh-CN.md",
         _MANIFEST_PATH,
         "SECURITY.md",
         "THIRD_PARTY_NOTICES.md",

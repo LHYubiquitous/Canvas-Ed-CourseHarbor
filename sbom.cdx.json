@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:8ce6816b-031f-4f20-b553-3fc4dabec429",
+  "serialNumber": "urn:uuid:360b2c28-3e38-4d6d-8480-5d7d350927a1",
   "metadata": {
-    "timestamp": "2026-10-20T09:42:02.939063900Z",
+    "timestamp": "2026-10-20T10:51:11.854699800Z",
     "tools": [
       {
         "vendor": "Astral Software Inc.",
@@ -14,9 +14,9 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "canvas-ed-mcp-1@0.2.0rc11",
+      "bom-ref": "canvas-ed-mcp-1@0.2.0rc12",
       "name": "canvas-ed-mcp",
-      "version": "0.2.0rc11",
+      "version": "0.2.0rc12",
       "properties": [
         {
           "name": "uv:package:is_project_root",

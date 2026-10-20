@@ -59,6 +59,18 @@ or a shared directory without reviewing ownership and backup behavior.
 
 ## 3. Credentials
 
+Obtain credentials before running setup:
+
+- **Canvas:** sign in to the institution's Canvas site, open **Account → Settings**,
+  scroll to **Approved Integrations**, and choose **New Access Token**. The setup API
+  base is normally `https://<your-canvas-host>/api/v1`.
+- **Ed:** sign in and open https://edstem.org/au/settings/api-tokens, then create a
+  dedicated personal token.
+
+Both values are password-equivalent and are normally shown only when created. Move
+them directly into the OS keyring; do not keep a plaintext copy. See
+[Authentication](AUTHENTICATION.md) for revocation and OAuth boundaries.
+
 First check only backend readiness:
 
 ```text

@@ -1,5 +1,33 @@
 # Release and Security Audit
 
+## 0.2.0rc12 release gate
+
+Status: **LOCAL AUTOMATED RELEASE GATE PASSED**
+Audit date: 2026-10-20
+
+`0.2.0rc12` is a documentation-only successor to the published, immutable
+`0.2.0rc11` release. It adds a complete Simplified Chinese README, documents the
+Canvas manual-token settings path and Australian Ed API-token page, and expands
+installation, daily-use, MCP, update, rollback, and troubleshooting guidance. It
+does not change synchronization, due-report, launcher, or MCP runtime behavior.
+
+The public-source allowlist contains 127 files. Fresh local verification completed
+332 synthetic tests with one expected Windows symlink-privilege skip, regenerated and
+verified the locked pylock/SBOM, and produced deterministic 42-entry wheel, 99-entry
+sdist, and 127-file clean-source artifacts. Existing rc9–rc11 owner-device and
+remote-CI evidence remains historical supporting evidence, not a claim that rc12 has
+already been rerun on those devices.
+
+| Gate | rc12 result |
+|---|---|
+| Local synthetic suite | `PASS`: 332 tests, 1 expected Windows symlink skip |
+| Locked pylock/SBOM audit | `PASS` with reviewed `uv 0.11.28` |
+| Deterministic wheel, sdist, clean-source packet | `PASS`: 42 / 99 / 127 entries |
+| Windows/macOS real behavior | Historical rc9–rc11 evidence only; rc12 rerun `NOT_RUN` |
+| Remote Windows/macOS/Linux CI | `PASS` at commit `7340b14`; [workflow run 39411378014](https://github.com/LHYubiquitous/canvas-ed-mcp/actions/runs/39411378014) |
+| GitHub tag/prerelease | `NOT_RUN` |
+| PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
+
 ## 0.2.0rc11 release gate
 
 Status: **AUTOMATED RELEASE GATE PASSED**
@@ -14,7 +42,7 @@ is the authoritative publication record; PyPI publication is outside this releas
 MCP behavior. It updates the public README, current verification record, candidate
 version, and public project links.
 
-The candidate is built from the exact 126-file `release-manifest.txt` allowlist. The
+The candidate is built from the exact 127-file `release-manifest.txt` allowlist. The
 private development history, credentials, state, course content, outputs, personal
 launchers, and legacy root tools are outside this boundary.
 

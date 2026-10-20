@@ -1,5 +1,7 @@
 # Canvas Ed MCP
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 [![Python 3.10–3.15](https://img.shields.io/badge/Python-3.10%E2%80%933.15-3776AB)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -7,7 +9,9 @@ Canvas Ed MCP is a local desktop tool for students who use Canvas, Ed, or both. 
 downloads course material into folders you choose, creates weekly and semester due
 date reports, and provides read-only MCP access to configured courses.
 
-`0.2.0rc11` is the current GitHub prerelease. Download the reviewed wheel from the
+`0.2.0rc12` is the current source candidate. The latest published GitHub prerelease
+remains `0.2.0rc11` until the rc12 release gate and publication are complete. Reviewed
+artifacts are available from the
 [Releases page](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases).
 The package is not published to PyPI.
 
@@ -34,7 +38,8 @@ public source candidate, wheel, or sdist.
 
 ## 1. Install
 
-Download `canvas_ed_mcp-0.2.0rc11-py3-none-any.whl` from the release and place it in
+Download `canvas_ed_mcp-0.2.0rc12-py3-none-any.whl` from the rc12 release when it is
+published, and place it in
 a new folder. Python 3.10–3.15 is supported. Keep this folder: generated launchers
 point to the virtual environment inside it.
 
@@ -42,7 +47,7 @@ point to the virtual environment inside it.
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc11-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc12-py3-none-any.whl
 .\.venv\Scripts\canvas-ed-mcp.exe --version
 ```
 
@@ -57,7 +62,7 @@ Activate the environment with:
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc11-py3-none-any.whl
+./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc12-py3-none-any.whl
 source ./.venv/bin/activate
 canvas-ed-mcp --version
 ```
@@ -69,6 +74,35 @@ The remaining examples assume the virtual environment is active. You can instead
 the full `.venv` executable path shown above.
 
 ## 2. Store credentials
+
+### Get a Canvas API token
+
+1. Sign in to your institution's Canvas website.
+2. Open **Account → Settings**. The direct path is normally
+   `https://<your-canvas-host>/profile/settings`.
+3. Scroll to **Approved Integrations** and select **New Access Token**.
+4. Enter a purpose such as `canvas-ed-mcp`, choose the shortest practical expiry,
+   and generate the token.
+5. Copy the value when Canvas displays it. Canvas does not show that value again.
+
+For the University of Sydney, the API base URL requested by setup is
+`https://canvas.sydney.edu.au/api/v1`. If **New Access Token** is unavailable, the
+institution has disabled self-service tokens; contact its Canvas support team rather
+than trying to bypass that policy. See Instructure's official
+[Canvas OAuth2: Manual Token Generation](https://developerdocs.instructure.com/services/canvas/oauth2/file.oauth#manual-token-generation)
+guide.
+
+### Get an Ed API token
+
+1. Sign in to the same Ed account that can open the courses you want to sync.
+2. Open the Australian-region [Ed API Tokens](https://edstem.org/au/settings/api-tokens)
+   page.
+3. Create a dedicated token for `canvas-ed-mcp` and copy it once.
+
+The Ed integration uses an unofficial, schema-sensitive API. Do not substitute a
+browser cookie, SSO password, Canvas token, or copied browser request.
+
+### Save tokens in the operating-system keyring
 
 Check the operating-system keyring before setup:
 
@@ -91,8 +125,14 @@ keyring:canvas-ed-mcp/default/canvas
 keyring:canvas-ed-mcp/default/ed
 ```
 
-See [Authentication](docs/AUTHENTICATION.md) for Canvas personal access tokens, Ed
-session tokens, revocation, and headless environment references.
+Use the same profile name in all three places. For example, profile `semester-2`
+uses service `canvas-ed-mcp/semester-2` and references
+`keyring:canvas-ed-mcp/semester-2/canvas` and
+`keyring:canvas-ed-mcp/semester-2/ed`. Never paste a token into TOML, a launcher, an
+MCP host configuration, a screenshot, or a Git repository.
+
+See [Authentication](docs/AUTHENTICATION.md) for Canvas and Ed personal API tokens,
+revocation, OAuth boundaries, and headless environment references.
 
 ## 3. Create your profile
 
@@ -109,6 +149,14 @@ When the preview is correct, create the profile:
 
 ```text
 canvas-ed-mcp setup --profile default
+```
+
+The non-dry-run command asks for a final confirmation before it writes the profile.
+It also installs the daily-use launchers. Validate the result with:
+
+```text
+canvas-ed-mcp config validate PATH_PRINTED_BY_SETUP
+canvas-ed-mcp doctor --profile default --show-paths
 ```
 
 To add, remove, or change courses later, preview and then commit the configuration:
@@ -197,6 +245,22 @@ or Ed. `course-sync` is a compatibility placeholder; use `canvas-ed-mcp sync`.
 - Tokens belong in the OS keyring, not source control or MCP host configuration.
 - Course access does not grant redistribution rights for downloaded material.
 
+## Troubleshooting and updates
+
+- `authentication_failed` or HTTP `401`: replace the expired/revoked token in the
+  keyring, then retry a dry run. Do not create a plaintext fallback.
+- HTTP `403`: the signed-in account or institution has denied that endpoint. A new
+  token usually does not change the account's permissions.
+- `missing_keyring` or `unsafe_backend`: run `canvas-ed-mcp doctor --show-paths` and
+  fix the native keyring before making provider requests.
+- A due report is not published when a required Canvas/Ed source has no complete
+  snapshot. Restore provider access and run it again.
+- After upgrading the wheel, run `canvas-ed-mcp launchers install --profile default`
+  so generated launchers point to the reviewed environment.
+
+Keep the previous wheel for rollback. Full install, update, rollback, headless Linux,
+and MCP host instructions are in [Cross-platform installation](docs/INSTALLATION.md).
+
 Report software vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ## Verification and release materials
@@ -225,12 +289,10 @@ python -B -m unittest discover -s tests -v
 
 Do not add live API calls to the default test suite.
 
-## 中文速览
+## Chinese documentation
 
-安装 wheel 后，先把 Canvas/Ed token 写入系统钥匙串，再运行
-`canvas-ed-mcp setup --profile default`。配置成功后，直接双击输出目录中的
-`canvas_ed_app`，即可使用课程同步、本周截止日期和全学期清单。同步只写入你选择的
-本地目录；MCP 服务不包含远端写操作。
+完整中文安装、API token 获取、首次配置、日常使用、MCP 与故障排查说明见
+[简体中文 README](README.zh-CN.md)。
 
 ## Attribution and license
 

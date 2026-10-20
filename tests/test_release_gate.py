@@ -37,7 +37,7 @@ class ReleaseGateTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (package / "__init__.py").write_text(
-                '__version__ = "0.2.0rc11"\n', encoding="utf-8"
+                '__version__ = "0.2.0rc12"\n', encoding="utf-8"
             )
             with self.assertRaisesRegex(ReleaseAuditError, "version_mismatch"):
                 read_project_version(root)
@@ -52,7 +52,7 @@ class ReleaseGateTests(unittest.TestCase):
         version_match = re.search(r'^__version__ = "([^"]+)"$', package_init, re.MULTILINE)
         self.assertIsNotNone(version_match)
         version = project["project"]["version"]
-        self.assertEqual("0.2.0rc11", version)
+        self.assertEqual("0.2.0rc12", version)
         self.assertEqual(version, version_match.group(1))
         development_dependencies = project["dependency-groups"]["dev"]
         runtime_dependencies = project["project"]["dependencies"]

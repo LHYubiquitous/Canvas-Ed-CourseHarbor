@@ -8,10 +8,13 @@
 ## 1. Manual Canvas token — one owner, local use only
 
 In the intended Canvas instance, sign in as the same user who will run this local
-tool. Open **Account → Settings** (or `/profile`), find **Approved Integrations**, and
-generate an access token with a clear purpose and an expiry if the institution allows
-it. Canvas displays a newly generated value once; transfer it directly into the OS
-keyring and clear the clipboard.
+tool. Open **Account → Settings** (normally
+`https://<your-canvas-host>/profile/settings`), scroll to **Approved Integrations**,
+select **New Access Token**, enter a clear purpose and the shortest practical expiry,
+then generate the token. Canvas displays a newly generated value once; transfer it
+directly into the OS keyring and clear the clipboard. The API base URL is normally
+`https://<your-canvas-host>/api/v1`; for the University of Sydney it is
+`https://canvas.sydney.edu.au/api/v1`.
 
 ```text
 python -m keyring set canvas-ed-mcp/default canvas
@@ -53,10 +56,9 @@ Official references:
 
 ## 3. Ed personal API token — beta/unofficial integration boundary
 
-After signing in to the correct Ed region/account, open
-https://edstem.org/settings/api-tokens (regional deployments may redirect to a path
-such as `/us/settings/api-tokens` or `/eu/settings/api-tokens`). Create a dedicated
-personal token and place it directly in the OS keyring:
+After signing in to the correct Ed account, open
+https://edstem.org/au/settings/api-tokens. Create a dedicated personal token and
+place it directly in the OS keyring:
 
 ```text
 python -m keyring set canvas-ed-mcp/default ed
