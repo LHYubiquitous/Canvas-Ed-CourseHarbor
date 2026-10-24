@@ -98,15 +98,19 @@ class SetupWindowTests(unittest.TestCase):
         )
         self.window = self.SetupWindow(self.controller)
 
-    def tearDown(self) -> None:
+    def _dispose_window(self) -> None:
         # Avoid a modal discard prompt masking the original assertion when a
         # visible draft test fails before it reaches its normal hide step.
-        self.window.hide()
-        self.window.close()
-        self.window.deleteLater()
+        window = self.window
+        window.hide()
+        window.close()
+        window.deleteLater()
+        del self.window
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.application.processEvents()
-        del self.window
+
+    def tearDown(self) -> None:
+        self._dispose_window()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -619,7 +623,10 @@ class SetupWindowTests(unittest.TestCase):
         self.assertIsNone(self.window.findChild(QPushButton, "commit_button"))
 
     def test_injected_config_only_save_requires_confirmation_and_writes_exact_plan(self) -> None:
-        self.window.close()
+        # Destroy the default fixture before replacing it. Leaving its Qt
+        # wrapper for Python to collect while the replacement is active causes
+        # intermittent 0xC0000005 teardown failures on Windows/Python 3.14.
+        self._dispose_window()
         with tempfile.TemporaryDirectory() as temporary:
             config_path = Path(temporary) / "profiles" / "ui-test.toml"
             self.window = build_config_saving_setup_window(
