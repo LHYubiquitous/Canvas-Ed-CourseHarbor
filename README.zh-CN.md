@@ -6,10 +6,9 @@ Canvas Ed MCP 是面向学生的本地桌面工具，可从 Canvas、Ed 或两�
 生成本周截止日期 TXT 与全学期 Markdown 清单，并为已确认的课程提供只读 MCP 工具。
 它只向本地输出目录写文件，不会在 Canvas 或 Ed 上提交、编辑或删除内容。
 
-当前源码候选版本为 `0.2.0rc16`；在 rc16 release gate 与正式发布完成前，GitHub 上最新的
-公开 prerelease 仍是 `0.2.0rc12`。发布后请从
-[Releases](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases) 下载经过审核的
-`canvas_ed_mcp-0.2.0rc16-py3-none-any.whl`；本项目尚未发布到 PyPI。
+`0.2.0rc16` 是当前 GitHub prerelease。请从
+[v0.2.0rc16 Release](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc16)
+下载经过审核的 `canvas_ed_mcp-0.2.0rc16-py3-none-any.whl`；本项目尚未发布到 PyPI。
 
 ## 1. 安装
 

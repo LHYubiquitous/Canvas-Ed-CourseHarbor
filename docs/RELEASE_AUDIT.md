@@ -2,8 +2,8 @@
 
 ## 0.2.0rc16 release gate
 
-Status: **IN PROGRESS — NOT PUBLISHED**
-Audit date: 2026-10-24
+Status: **PASS — PUBLIC GITHUB PRERELEASE PUBLISHED**
+Audit date: 2026-10-25
 
 `0.2.0rc16` supersedes the failed, unpublished rc15 packet. It preserves configured
 course folder/code/name/term metadata in `SyncSourceSummary`, presents human-readable
@@ -15,10 +15,11 @@ macOS runner without the rc15 quote corruption.
 | Root-cause application regression tests | `PASS` locally |
 | Complete public release suite | `PASS`: 474 non-GUI tests plus 37 process-isolated GUI tests; 2 documented platform skips in the Windows run |
 | Exact wheel build and distribution audit | `PASS`: private CI deterministic build/audit/install job |
-| macOS exact-wheel automated and human label gate | `NOT_RUN` |
+| macOS exact-wheel automated and human label gate | `PASS`: owner-device macOS 26.5.2 arm64, Python 3.14.8, exact wheel SHA-256 `3dc625712651d37661a8e3d19ea9debd3d4212ba47dc9359c290ea1d36e35dec` |
 | macOS real local Apply | `NOT_RUN`: not required for this presentation-only repair |
-| Remote Windows/macOS/Linux CI | `PASS` at product commit `4cacce8`; [workflow run 40055096148](https://github.com/LHYubiquitous/canvas-ed-mcp/actions/runs/40055096148) |
-| GitHub tag/prerelease | `NOT_RUN / BLOCKED` |
+| Remote Windows/macOS/Linux CI | `PASS`: private product run [40055096148](https://github.com/LHYubiquitous/canvas-ed-mcp/actions/runs/40055096148) and public release-source run [40106666647](https://github.com/LHYubiquitous/canvas-ed-mcp-public/actions/runs/40106666647) |
+| GitHub tag/prerelease | `PASS`: [v0.2.0rc16](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc16), tag target `620b6776fe06d92b3d188f70937afa28c5a03237` |
+| PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
 
 The private matrix passed on Windows and macOS at Python 3.10/3.14 and on Linux at
 every declared Python version from 3.10 through 3.14. Both Windows jobs ran the real
@@ -26,8 +27,10 @@ PySide6 test modules in isolated processes, including the setup-window focus-del
 regression that previously exposed a Python 3.14 access violation. The distribution job
 then passed deterministic packet construction, public manifest and metadata audits,
 exact-wheel installation, clean-source installation, console-entry-point checks,
-and MCP protocol smoke tests. These automated results do not replace the pending
-macOS owner review of the exact rc16 packet.
+and MCP protocol smoke tests. The owner-device macOS gate then installed the exact
+published wheel, validated the human-readable labels and default-No confirmation,
+and completed without writing provider data. The public tag and six release assets
+were verified after upload; PyPI publication remains outside this release.
 
 ## 0.2.0rc15 release gate
 

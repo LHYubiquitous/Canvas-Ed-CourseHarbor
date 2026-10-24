@@ -9,10 +9,8 @@ Canvas Ed MCP is a local desktop tool for students who use Canvas, Ed, or both. 
 downloads course material into folders you choose, creates weekly and semester due
 date reports, and provides read-only MCP access to configured courses.
 
-`0.2.0rc16` is the current source candidate. The latest published GitHub prerelease
-remains `0.2.0rc12` until the rc16 release gate and publication are complete. Reviewed
-artifacts are available from the
-[Releases page](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases).
+`0.2.0rc16` is the current GitHub prerelease. Download the reviewed artifacts from the
+[v0.2.0rc16 release](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc16).
 The package is not published to PyPI.
 
 ## What it does
@@ -39,10 +37,10 @@ public source candidate, wheel, or sdist.
 
 ## 1. Install
 
-Download `canvas_ed_mcp-0.2.0rc16-py3-none-any.whl` from the rc16 release when it is
-published, and place it in
-a new folder. Python 3.10–3.14 is supported. Keep this folder: generated launchers
-point to the virtual environment inside it.
+Download `canvas_ed_mcp-0.2.0rc16-py3-none-any.whl` from the
+[v0.2.0rc16 release](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc16)
+and place it in a new folder. Python 3.10–3.14 is supported. Keep this folder:
+generated launchers point to the virtual environment inside it.
 
 ### Windows PowerShell
 
