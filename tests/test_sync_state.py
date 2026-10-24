@@ -22,6 +22,7 @@ from canvas_ed_mcp.sync.model import (
 )
 from canvas_ed_mcp.sync.locking import SyncLock
 from canvas_ed_mcp.sync.state import (
+    ArchivedSourceState,
     CURRENT_STATE_SCHEMA,
     StateLoadError,
     StateMigrationError,
@@ -134,6 +135,52 @@ def legacy_v3(output_root: Path) -> dict[str, object]:
 
 
 class StateModelAndPersistenceTests(unittest.TestCase):
+    def test_v5_checkpoint_migrates_to_generation_zero_without_folder_guess(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            output = (base / "Courses").resolve()
+            path = base / "state.json"
+            path.write_text(json.dumps({
+                "schema_version": 5,
+                "profile": "default",
+                "output_root": str(output),
+                "sources": [],
+                "initialized_sources": [{
+                    "course_key": "logical-202", "provider": "ed",
+                    "instance": "ed.example.edu", "course_id": "202",
+                }],
+                "policy_skips": [],
+            }), encoding="utf-8")
+
+            loaded = load_state(path, profile="default", output_root=output)
+
+        checkpoint = loaded.initialized_sources[0]
+        self.assertEqual(CURRENT_STATE_SCHEMA, loaded.schema_version)
+        self.assertEqual(0, checkpoint.reconcile_generation)
+        self.assertIsNone(checkpoint.course_folder)
+
+    def test_archived_source_state_round_trips_deterministically(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            output = (base / "Courses").resolve()
+            archived = ArchivedSourceState(
+                "old-key", "ed", "ed.example.edu", "202", 3, "OLD",
+                (previous_source("archived"),), (),
+            )
+            state = SyncState(
+                "default", output, (), archived_sources=(archived,)
+            )
+            path = base / "state.json"
+            backup = base / "backup.json"
+            save_state(state, path=path, backup_path=backup)
+            first = path.read_bytes()
+            loaded = load_state(path, profile="default", output_root=output)
+            save_state(loaded, path=path, backup_path=backup)
+            second = path.read_bytes()
+
+        self.assertEqual((archived,), loaded.archived_sources)
+        self.assertEqual(first, second)
+
     def test_new_state_is_profile_and_output_namespaced_and_immutable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "Courses"

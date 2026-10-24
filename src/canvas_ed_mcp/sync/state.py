@@ -17,8 +17,12 @@ from .model import PreviousSource, RemoteKind, SourceKey, StoredFile
 from .policy import PolicySkipReason
 
 
-CURRENT_STATE_SCHEMA = 5
+CURRENT_STATE_SCHEMA = 6
 _ROOT_FIELDS = frozenset({
+    "schema_version", "profile", "output_root", "sources", "initialized_sources",
+    "policy_skips", "archived_sources",
+})
+_V5_ROOT_FIELDS = frozenset({
     "schema_version", "profile", "output_root", "sources", "initialized_sources", "policy_skips"
 })
 _V4_ROOT_FIELDS = frozenset({"schema_version", "profile", "output_root", "sources"})
@@ -29,7 +33,10 @@ _KEY_FIELDS = frozenset(
 _FILE_FIELDS = frozenset(
     {"output_relative_path", "written_sha256", "managed_by_sync"}
 )
-_INITIALIZED_FIELDS = frozenset({"course_key", "provider", "instance", "course_id"})
+_INITIALIZED_FIELDS = frozenset({
+    "course_key", "provider", "instance", "course_id", "reconcile_generation", "course_folder"
+})
+_V5_INITIALIZED_FIELDS = frozenset({"course_key", "provider", "instance", "course_id"})
 _POLICY_SKIP_FIELDS = frozenset(
     {"course_key", "key", "signature", "reason", "policy_fingerprint"}
 )
@@ -78,12 +85,24 @@ class InitializedSource:
     provider: str
     instance: str
     course_id: str
+    reconcile_generation: int = 0
+    course_folder: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.course_key, str) or not self.course_key.strip():
             raise ValueError("course_key must be a non-empty string")
         probe = SourceKey(self.provider, self.instance, self.course_id, RemoteKind.FILE, "checkpoint")
         del probe
+        if (
+            isinstance(self.reconcile_generation, bool)
+            or not isinstance(self.reconcile_generation, int)
+            or self.reconcile_generation < 0
+        ):
+            raise ValueError("reconcile_generation must be a non-negative integer")
+        if self.course_folder is not None and (
+            not isinstance(self.course_folder, str) or not self.course_folder.strip()
+        ):
+            raise ValueError("course_folder must be a non-empty string when present")
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,14 +131,43 @@ class PolicySkipState:
 
 
 @dataclass(frozen=True, slots=True)
+class ArchivedSourceState:
+    """Superseded ownership evidence retained without participating in sync decisions."""
+
+    course_key: str
+    provider: str
+    instance: str
+    course_id: str
+    reconcile_generation: int
+    course_folder: str | None
+    sources: tuple[PreviousSource, ...] = ()
+    policy_skips: tuple[PolicySkipState, ...] = ()
+
+    def __post_init__(self) -> None:
+        InitializedSource(
+            self.course_key, self.provider, self.instance, self.course_id,
+            self.reconcile_generation, self.course_folder,
+        )
+        if not isinstance(self.sources, tuple) or not all(
+            isinstance(item, PreviousSource) for item in self.sources
+        ):
+            raise ValueError("archived sources must be an immutable tuple")
+        if not isinstance(self.policy_skips, tuple) or not all(
+            isinstance(item, PolicySkipState) for item in self.policy_skips
+        ):
+            raise ValueError("archived policy_skips must be an immutable tuple")
+
+
+@dataclass(frozen=True, slots=True)
 class SyncState:
-    """Immutable v5 state for exactly one profile and canonical output root."""
+    """Immutable v6 state for exactly one profile and canonical output root."""
 
     profile: str
     output_root: Path
     sources: tuple[PreviousSource, ...]
     initialized_sources: tuple[InitializedSource, ...] = ()
     policy_skips: tuple[PolicySkipState, ...] = ()
+    archived_sources: tuple[ArchivedSourceState, ...] = ()
     schema_version: int = field(default=CURRENT_STATE_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
@@ -143,6 +191,12 @@ class SyncState:
             raise ValueError("initialized_sources must be an immutable tuple")
         if len(self.initialized_sources) != len(set(self.initialized_sources)):
             raise ValueError("state cannot contain duplicate initialized sources")
+        checkpoint_identities = [
+            (item.provider, item.instance, item.course_id)
+            for item in self.initialized_sources
+        ]
+        if len(checkpoint_identities) != len(set(checkpoint_identities)):
+            raise ValueError("state cannot contain multiple active checkpoints for one source")
         if not isinstance(self.policy_skips, tuple) or not all(
             isinstance(item, PolicySkipState) for item in self.policy_skips
         ):
@@ -150,6 +204,10 @@ class SyncState:
         skip_keys = [(item.course_key, item.key) for item in self.policy_skips]
         if len(skip_keys) != len(set(skip_keys)):
             raise ValueError("state cannot contain duplicate policy skips")
+        if not isinstance(self.archived_sources, tuple) or not all(
+            isinstance(item, ArchivedSourceState) for item in self.archived_sources
+        ):
+            raise ValueError("archived_sources must be an immutable tuple")
 
     def previous_for(self, key: SourceKey) -> PreviousSource | None:
         if not isinstance(key, SourceKey):
@@ -157,7 +215,14 @@ class SyncState:
         return next((source for source in self.sources if source.key == key), None)
 
     def initialized_for(self, *, course_key: str, provider: str, instance: str, course_id: str) -> bool:
-        return InitializedSource(course_key, provider, instance, course_id) in self.initialized_sources
+        checkpoint = self.checkpoint_for(provider=provider, instance=instance, course_id=course_id)
+        return checkpoint is not None and checkpoint.course_key == course_key
+
+    def checkpoint_for(self, *, provider: str, instance: str, course_id: str) -> InitializedSource | None:
+        return next((
+            item for item in self.initialized_sources
+            if (item.provider, item.instance, item.course_id) == (provider, instance, course_id)
+        ), None)
 
 
 def new_state(*, profile: str, output_root: Path) -> SyncState:
@@ -205,12 +270,28 @@ def _source_to_document(source: PreviousSource) -> dict[str, object]:
     }
 
 
-def _initialized_to_document(source: InitializedSource) -> dict[str, str]:
+def _initialized_to_document(source: InitializedSource) -> dict[str, object]:
     return {
         "course_key": source.course_key,
         "provider": source.provider,
         "instance": source.instance,
         "course_id": source.course_id,
+        "reconcile_generation": source.reconcile_generation,
+        "course_folder": source.course_folder,
+    }
+
+
+def _archived_to_document(archived: ArchivedSourceState) -> dict[str, object]:
+    return {
+        **_initialized_to_document(InitializedSource(
+            archived.course_key, archived.provider, archived.instance,
+            archived.course_id, archived.reconcile_generation, archived.course_folder,
+        )),
+        "sources": [_source_to_document(source) for source in sorted(archived.sources, key=_source_sort_key)],
+        "policy_skips": [_policy_skip_to_document(skip) for skip in sorted(
+            archived.policy_skips,
+            key=lambda item: (item.course_key, _source_sort_key(PreviousSource(item.key, item.signature))),
+        )],
     }
 
 
@@ -242,6 +323,17 @@ def _state_bytes(state: SyncState) -> bytes:
         "policy_skips": [
             _policy_skip_to_document(skip)
             for skip in sorted(state.policy_skips, key=lambda item: (item.course_key, _source_sort_key(PreviousSource(item.key, item.signature))))
+        ],
+        "archived_sources": [
+            _archived_to_document(item)
+            for item in sorted(
+                state.archived_sources,
+                key=lambda value: (
+                    value.provider, value.instance, value.course_id,
+                    value.reconcile_generation, value.course_key,
+                    value.course_folder or "",
+                ),
+            )
         ],
     }
     return (
@@ -297,10 +389,17 @@ def _parse_key(value: object) -> SourceKey:
     )
 
 
-def _parse_initialized(value: object) -> InitializedSource:
+def _parse_initialized(value: object, *, legacy_v5: bool = False) -> InitializedSource:
     data = _require_object(value, "initialized source")
-    _require_exact_fields(data, _INITIALIZED_FIELDS, "initialized source")
-    return InitializedSource(data["course_key"], data["provider"], data["instance"], data["course_id"])
+    _require_exact_fields(
+        data, _V5_INITIALIZED_FIELDS if legacy_v5 else _INITIALIZED_FIELDS,
+        "initialized source",
+    )
+    return InitializedSource(
+        data["course_key"], data["provider"], data["instance"], data["course_id"],
+        0 if legacy_v5 else data["reconcile_generation"],
+        None if legacy_v5 else data["course_folder"],
+    )
 
 
 def _parse_policy_skip(value: object) -> PolicySkipState:
@@ -316,6 +415,23 @@ def _parse_policy_skip(value: object) -> PolicySkipState:
     )
 
 
+def _parse_archived(value: object) -> ArchivedSourceState:
+    data = _require_object(value, "archived source")
+    expected = _INITIALIZED_FIELDS | {"sources", "policy_skips"}
+    _require_exact_fields(data, expected, "archived source")
+    checkpoint = _parse_initialized({key: data[key] for key in _INITIALIZED_FIELDS})
+    sources = data["sources"]
+    skips = data["policy_skips"]
+    if not isinstance(sources, list) or not isinstance(skips, list):
+        raise ValueError("archived sources and policy_skips must be arrays")
+    return ArchivedSourceState(
+        checkpoint.course_key, checkpoint.provider, checkpoint.instance,
+        checkpoint.course_id, checkpoint.reconcile_generation, checkpoint.course_folder,
+        tuple(_parse_source(item) for item in sources),
+        tuple(_parse_policy_skip(item) for item in skips),
+    )
+
+
 def _decode_state(payload: bytes) -> SyncState:
     try:
         value = json.loads(payload.decode("utf-8"))
@@ -324,13 +440,15 @@ def _decode_state(payload: bytes) -> SyncState:
     try:
         document = _require_object(value, "state")
         schema = document.get("schema_version")
-        if schema not in {4, CURRENT_STATE_SCHEMA} or isinstance(schema, bool):
+        if schema not in {4, 5, CURRENT_STATE_SCHEMA} or isinstance(schema, bool):
             raise StateLoadError(
                 "unsupported_schema",
                 f"Unsupported state schema {schema!r}; expected {CURRENT_STATE_SCHEMA}",
             )
         _require_exact_fields(
-            document, _V4_ROOT_FIELDS if schema == 4 else _ROOT_FIELDS, "state"
+            document,
+            _V4_ROOT_FIELDS if schema == 4 else (_V5_ROOT_FIELDS if schema == 5 else _ROOT_FIELDS),
+            "state",
         )
         profile = document["profile"]
         output_root = document["output_root"]
@@ -342,6 +460,7 @@ def _decode_state(payload: bytes) -> SyncState:
         if not isinstance(sources, list):
             raise ValueError("sources must be an array")
         parsed_sources = tuple(_parse_source(source) for source in sources)
+        archived: tuple[ArchivedSourceState, ...] = ()
         if schema == 4:
             # v4 did not bind source records to logical courses, so inferring a
             # checkpoint would be unsafe after reconfiguration.
@@ -352,14 +471,23 @@ def _decode_state(payload: bytes) -> SyncState:
             skip_values = document["policy_skips"]
             if not isinstance(initialized_values, list) or not isinstance(skip_values, list):
                 raise ValueError("initialized_sources and policy_skips must be arrays")
-            initialized = tuple(_parse_initialized(value) for value in initialized_values)
+            initialized = tuple(
+                _parse_initialized(value, legacy_v5=(schema == 5))
+                for value in initialized_values
+            )
             skips = tuple(_parse_policy_skip(value) for value in skip_values)
+            if schema == CURRENT_STATE_SCHEMA:
+                archived_values = document["archived_sources"]
+                if not isinstance(archived_values, list):
+                    raise ValueError("archived_sources must be an array")
+                archived = tuple(_parse_archived(value) for value in archived_values)
         return SyncState(
             profile=profile,
             output_root=Path(output_root),
             sources=parsed_sources,
             initialized_sources=initialized,
             policy_skips=skips,
+            archived_sources=archived,
         )
     except StateLoadError:
         raise
@@ -382,6 +510,17 @@ def _validate_namespace(state: SyncState, *, profile: str, output_root: Path) ->
         )
 
 
+def load_state_bytes(
+    payload: bytes, *, profile: str, output_root: Path
+) -> SyncState:
+    """Validate one exact state byte snapshot against its expected namespace."""
+    if not isinstance(payload, bytes):
+        raise TypeError("state payload must be bytes")
+    state = _decode_state(payload)
+    _validate_namespace(state, profile=profile, output_root=output_root)
+    return state
+
+
 def load_state(path: Path, *, profile: str, output_root: Path) -> SyncState:
     """Load and validate v4 state; backup recovery is deliberately explicit."""
     path = Path(path)
@@ -391,9 +530,7 @@ def load_state(path: Path, *, profile: str, output_root: Path) -> SyncState:
         raise StateLoadError("missing", f"State file does not exist: {path}") from exc
     except OSError as exc:
         raise StateLoadError("unreadable", f"Cannot read state file: {path}") from exc
-    state = _decode_state(payload)
-    _validate_namespace(state, profile=profile, output_root=output_root)
-    return state
+    return load_state_bytes(payload, profile=profile, output_root=output_root)
 
 
 def _atomic_write(payload: bytes, destination: Path) -> None:

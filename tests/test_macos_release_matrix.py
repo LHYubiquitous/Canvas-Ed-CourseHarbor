@@ -98,7 +98,7 @@ class MacOSReleaseMatrixTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         combined = result.stdout + result.stderr
         self.assertIn("Python 3.10 locked source matrix", combined)
-        self.assertIn("Python 3.15 exact wheel install", combined)
+        self.assertIn("Python 3.14 exact wheel install", combined)
         self.assertIn("Native macOS Keychain canary", combined)
         self.assertIn("MCP host UI: NOT_RUN", combined)
         self.assertNotIn("must-not-appear", combined)
@@ -272,9 +272,9 @@ class MacOSReleaseMatrixTests(unittest.TestCase):
     def test_python_selectors_are_restricted_to_supported_versions(self) -> None:
         from ci.macos_release_matrix import normalize_python_versions
 
-        self.assertEqual(("3.10", "3.15"), normalize_python_versions(None))
+        self.assertEqual(("3.10", "3.14"), normalize_python_versions(None))
         self.assertEqual(("3.12",), normalize_python_versions(("3.12", "3.12")))
-        for unsafe in ("3.9", "3.16", "../../3.15", "3.15/../../escape", "3.15\n"):
+        for unsafe in ("3.9", "3.15", "../../3.14", "3.14/../../escape", "3.14\n"):
             with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
                 normalize_python_versions((unsafe,))
 

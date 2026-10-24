@@ -1,13 +1,13 @@
 # macOS Owner-Device Release Candidate Test
 
-> Target: `canvas-ed-mcp 0.2.0rc12` on the repository owner's Mac.
+> Target: `canvas-ed-mcp 0.2.0rc16` on the repository owner's Mac.
 > This checklist verifies native macOS behavior that GitHub-hosted runners cannot
 > prove: Keychain prompts, the local MCP host, and the private legacy launcher.
 > Record every unchecked item as `NOT_RUN`; do not infer a pass.
 
 The preferred path for Sections 2–5 is now the one-command matrix in
 `docs/MACOS_AUTOMATED_RELEASE_TEST.md`. Run it first; it covers the clean-clone,
-Python 3.10/3.15 locked environments, full synthetic suite, build/distribution/
+Python 3.10/3.14 locked environments, full synthetic suite, build/distribution/
 clean-source gates, isolated installed CLI/MCP smoke, and native Keychain canary.
 Keep this document for the MCP host UI, optional real-account catalog, and private
 legacy launcher checks that automation deliberately cannot authorize or observe.
@@ -21,7 +21,7 @@ ignored credentials, state, course output, or uncommitted work.
 - Private repository: `https://github.com/LHYubiquitous/canvas-ed-mcp.git`
 - Branch: `hy/phase-3-4-portability`
 - Verified baseline ancestor: `c305be28882dcedb3f93fd197a9218746c4d05d2`
-- Expected package version: `0.2.0rc12`
+- Expected package version: `0.2.0rc16`
 - Result vocabulary: `PASS`, `FAIL`, `NOT_RUN`, or `DEGRADED`
 
 Safety rules:
@@ -66,7 +66,7 @@ an old local copy and treat it as this release candidate.
 After cloning, the automated path for Sections 3–5 is:
 
 ```zsh
-uv run --no-project --python 3.15 \
+uv run --no-project --python 3.14 \
   python -B ci/macos_release_matrix.py
 ```
 
@@ -89,8 +89,8 @@ uv pip check
 
 Expected results:
 
-- Version is exactly `canvas-ed-mcp 0.2.0rc12` or an equivalent display containing
-  `0.2.0rc12`.
+- Version is exactly `canvas-ed-mcp 0.2.0rc16` or an equivalent display containing
+  `0.2.0rc16`.
 - `doctor --show-paths` reports macOS user locations and does not create course
   output or print any credential value.
 - `course-sync --help` succeeds, but this only verifies the reserved compatibility

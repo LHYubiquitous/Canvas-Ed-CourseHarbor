@@ -1,5 +1,111 @@
 # Release and Security Audit
 
+## 0.2.0rc16 release gate
+
+Status: **IN PROGRESS — NOT PUBLISHED**
+Audit date: 2026-10-24
+
+`0.2.0rc16` supersedes the failed, unpublished rc15 packet. It preserves configured
+course folder/code/name/term metadata in `SyncSourceSummary`, presents human-readable
+course and provider labels in the dashboard and apply confirmation, and rebuilds the
+macOS runner without the rc15 quote corruption.
+
+| Gate | rc16 result |
+|---|---|
+| Root-cause application regression tests | `PASS` locally |
+| Complete public release suite | `PASS`: 474 non-GUI tests plus 37 process-isolated GUI tests; 2 documented platform skips in the Windows run |
+| Exact wheel build and distribution audit | `PASS`: private CI deterministic build/audit/install job |
+| macOS exact-wheel automated and human label gate | `NOT_RUN` |
+| macOS real local Apply | `NOT_RUN`: not required for this presentation-only repair |
+| Remote Windows/macOS/Linux CI | `PASS` at product commit `4cacce8`; [workflow run 40055096148](https://github.com/LHYubiquitous/canvas-ed-mcp/actions/runs/40055096148) |
+| GitHub tag/prerelease | `NOT_RUN / BLOCKED` |
+
+The private matrix passed on Windows and macOS at Python 3.10/3.14 and on Linux at
+every declared Python version from 3.10 through 3.14. Both Windows jobs ran the real
+PySide6 test modules in isolated processes, including the setup-window focus-delivery
+regression that previously exposed a Python 3.14 access violation. The distribution job
+then passed deterministic packet construction, public manifest and metadata audits,
+exact-wheel installation, clean-source installation, console-entry-point checks,
+and MCP protocol smoke tests. These automated results do not replace the pending
+macOS owner review of the exact rc16 packet.
+
+## 0.2.0rc15 release gate
+
+Status: **FAIL — NOT PUBLISHED**
+Audit date: 2026-10-23
+
+`0.2.0rc15` supersedes the unpublished rc14 wheel after macOS owner testing found
+that ordinary and confirmation-dialog button labels could inherit a white system
+foreground while the application supplied a white button surface. The candidate
+adds one explicit dark foreground rule and macOS palette regression tests; sync,
+due, MCP, provider, state, and storage behavior are unchanged.
+
+| Gate | rc15 result |
+|---|---|
+| Returned macOS evidence packet integrity and secret scan | `PASS` locally |
+| Root-cause regression test | `PASS`: reproduced before fix; fixed contract passes |
+| Targeted Windows application/UI tests | `PASS`: 17 passed, 3 documented skips |
+| Complete local synthetic suite | `PASS`: 583 tests, 13 documented skips |
+| Locked pylock/SBOM audit | `PASS` with reviewed `uv 0.11.28` |
+| Deterministic wheel, sdist, clean-source rehearsal | `PASS`: 64 / 142 / 170 entries |
+| Windows Python 3.10 exact-wheel install | `PASS`: GUI extra, dependency check, version, entry points, and UI imports |
+| macOS exact-wheel automated checks | `PASS` only after manually correcting the delivered runner |
+| Human Course/Source readability | `FAIL`: internal key, hostname, and numeric ID were shown |
+| Delivered runner executed unchanged | `FAIL`: duplicated single quotes caused exit 1 before GUI startup |
+| macOS real local Apply | `NOT_RUN`: not required for the rc15 style-only change; rc14 apply evidence remains historical |
+| Remote Windows/macOS/Linux CI | `NOT_RUN` |
+| GitHub tag/prerelease | `NOT_RUN / BLOCKED` |
+
+The final rc15 packet remained blocked even though the wheel's automated product
+checks passed after a temporary runner repair. `SyncSourceSummary` discarded existing
+course code/name/term metadata, so the dashboard and confirmation path used internal
+identity values. The delivered runner also duplicated single quotes in its `awk` and
+Python command arguments and exited before GUI startup. Existing evidence is retained
+as a failed gate; no real local Apply, public tag, or public release was performed.
+
+## 0.2.0rc14 release gate
+
+Status: **IN PROGRESS — NOT PUBLISHED**
+Audit date: 2026-10-22
+
+`0.2.0rc14` adds non-destructive graphical course reconfiguration. Existing sources
+may be deactivated, reactivated, relinked, or assigned a one-time next-sync mode.
+Downloaded files are preserved in place; superseded state becomes diagnostic archive
+evidence, and folder migration remains intentionally unsupported.
+
+| Gate | rc14 result |
+|---|---|
+| Targeted config/state/engine/controller/UI tests | `PASS` locally |
+| Complete local synthetic suite | `NOT_RUN` |
+| Locked pylock/SBOM and deterministic artifacts | `NOT_RUN` |
+| Windows graphical owner review | `NOT_RUN` |
+| macOS graphical owner review | `NOT_RUN` |
+| Remote Windows/macOS/Linux CI | `NOT_RUN` |
+| GitHub tag/prerelease | `NOT_RUN / NOT AUTHORIZED` |
+
+## 0.2.0rc13 release gate
+
+Status: **IN PROGRESS — NOT PUBLISHED**
+Audit date: 2026-10-22
+
+`0.2.0rc13` adds config-only graphical reconfiguration for existing profiles and
+temporarily caps declared Python support at 3.14 because the pinned MCP runtime does
+not yet import correctly on Python 3.15. The editor never migrates course folders:
+initialized or non-empty mappings are locked, and eligible remapping is rechecked at
+save time.
+
+| Gate | rc13 result |
+|---|---|
+| Local synthetic suite | `PASS`: 530 tests, 10 documented skips |
+| Locked pylock/SBOM audit | `PASS` with reviewed `uv 0.11.28` |
+| Deterministic wheel, sdist, clean-source packet | `PASS`: 58 / 130 / 158 entries |
+| Windows Python 3.10 exact-wheel install | `PASS`: GUI extra, version, configure entry point, and reconfiguration imports |
+| Windows graphical reconfiguration owner review | `NOT_RUN` |
+| macOS graphical reconfiguration owner review | `NOT_RUN` |
+| Remote Windows/macOS/Linux CI | `NOT_RUN` |
+| GitHub tag/prerelease | `NOT_RUN` |
+| PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
+
 ## 0.2.0rc12 release gate
 
 Status: **LOCAL AUTOMATED RELEASE GATE PASSED**

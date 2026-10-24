@@ -10,16 +10,18 @@ from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 from canvas_ed_mcp.cli import (
     _due_providers,
     _due,
+    _configure_gui,
     _launcher_python_executable,
     _menu_sync,
     _setup,
     build_parser,
+    configure_gui_main,
 )
 from canvas_ed_mcp.due.model import DueItem, DuePrecision, DueSourceKey
 from canvas_ed_mcp.due.service import DueCollection
@@ -74,6 +76,7 @@ class DailyCliTests(unittest.TestCase):
             ["due", "semester", "--profile", "daily", "--config", "daily.toml"],
             ["launchers", "install", "--profile", "daily", "--config", "daily.toml"],
             ["open-course-folder", "--profile", "daily", "--config", "daily.toml"],
+            ["configure-gui", "--profile", "daily", "--config", "daily.toml"],
         )
         for argv in cases:
             with self.subTest(argv=argv):
@@ -81,6 +84,32 @@ class DailyCliTests(unittest.TestCase):
                 self.assertEqual("daily", args.profile)
                 self.assertEqual("daily.toml", str(args.config))
                 self.assertTrue(callable(args.handler))
+
+    def test_graphical_configure_forwards_exact_profile_and_config(self) -> None:
+        args = Namespace(profile="daily", config=Path("daily.toml"))
+        launch = Mock(return_value=0)
+        with patch.dict(
+            "sys.modules",
+            {
+                "canvas_ed_mcp.ui.configure_window": SimpleNamespace(
+                    main=launch
+                )
+            },
+        ):
+            self.assertEqual(0, _configure_gui(args))
+        launch.assert_called_once_with(
+            ["--profile", "daily", "--config", "daily.toml"]
+        )
+
+    def test_graphical_configure_help_does_not_load_qt(self) -> None:
+        output = StringIO()
+        with patch("canvas_ed_mcp.cli._configure_gui") as launch, redirect_stdout(output):
+            with self.assertRaises(SystemExit) as raised:
+                configure_gui_main(["--help"])
+
+        self.assertEqual(0, raised.exception.code)
+        self.assertIn("Reconfigure an existing Canvas & Ed profile", output.getvalue())
+        launch.assert_not_called()
 
     def test_committed_setup_installs_launchers_but_dry_run_does_not(self) -> None:
         args = Namespace(profile="daily", config=Path("daily.toml"), dry_run=False)
@@ -153,15 +182,19 @@ class DailyCliTests(unittest.TestCase):
             print(json.dumps(report))
             return 1
 
-        with patch("canvas_ed_mcp.cli.main", side_effect=invoke) as main_call:
-            exit_code = _menu_sync(
-                ["--profile", "daily"], input_fn=lambda _: "y"
-            )
+        output = StringIO()
+        with patch("canvas_ed_mcp.cli.main", side_effect=invoke) as main_call, redirect_stdout(output):
+            exit_code = _menu_sync(["--profile", "daily"], input_fn=lambda _: "y")
 
         self.assertEqual(0, exit_code)
         self.assertEqual(2, main_call.call_count)
+        rendered = output.getvalue()
+        self.assertIn("Course material preview", rendered)
+        self.assertIn("course — Canvas: 1 to download", rendered)
+        self.assertIn("course — Ed: 1 to download", rendered)
+        self.assertNotIn('"executed_source_count"', rendered)
 
-    def test_menu_sync_blocks_warning_preview_when_a_source_has_no_actions(self) -> None:
+    def test_menu_sync_applies_other_sources_when_one_source_has_no_actions(self) -> None:
         preview = {
             "executed_source_count": 2,
             "run_issue_codes": [],
@@ -184,8 +217,16 @@ class DailyCliTests(unittest.TestCase):
             ],
         }
 
-        def invoke(_: list[str]) -> int:
-            print(json.dumps(preview))
+        applied = {
+            **preview,
+            "sources": [
+                {**source, "committed": True, "dry_run": False}
+                for source in preview["sources"]
+            ],
+        }
+
+        def invoke(argv: list[str]) -> int:
+            print(json.dumps(preview if "--dry-run" in argv else applied))
             return 1
 
         with patch("canvas_ed_mcp.cli.main", side_effect=invoke) as main_call:
@@ -193,8 +234,8 @@ class DailyCliTests(unittest.TestCase):
                 ["--profile", "daily"], input_fn=lambda _: "y"
             )
 
-        self.assertEqual(1, exit_code)
-        main_call.assert_called_once()
+        self.assertEqual(0, exit_code)
+        self.assertEqual(2, main_call.call_count)
 
     def test_due_provider_startup_failure_is_isolated_per_provider(self) -> None:
         class FakeEd:

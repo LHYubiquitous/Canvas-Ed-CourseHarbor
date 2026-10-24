@@ -6,21 +6,21 @@ Canvas Ed MCP 是面向学生的本地桌面工具，可从 Canvas、Ed 或两�
 生成本周截止日期 TXT 与全学期 Markdown 清单，并为已确认的课程提供只读 MCP 工具。
 它只向本地输出目录写文件，不会在 Canvas 或 Ed 上提交、编辑或删除内容。
 
-当前源码候选版本为 `0.2.0rc12`；在 rc12 release gate 与正式发布完成前，GitHub 上最新的
-公开 prerelease 仍是 `0.2.0rc11`。发布后请从
+当前源码候选版本为 `0.2.0rc16`；在 rc16 release gate 与正式发布完成前，GitHub 上最新的
+公开 prerelease 仍是 `0.2.0rc12`。发布后请从
 [Releases](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases) 下载经过审核的
-`canvas_ed_mcp-0.2.0rc12-py3-none-any.whl`；本项目尚未发布到 PyPI。
+`canvas_ed_mcp-0.2.0rc16-py3-none-any.whl`；本项目尚未发布到 PyPI。
 
 ## 1. 安装
 
-需要 Python 3.10–3.15。把 wheel 放进一个准备长期保留的独立目录；生成的启动脚本会
+需要 Python 3.10–3.14。把 wheel 放进一个准备长期保留的独立目录；生成的启动脚本会
 指向该目录中的虚拟环境。
 
 ### Windows PowerShell
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc12-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc16-py3-none-any.whl
 .\.venv\Scripts\canvas-ed-mcp.exe --version
 .\.venv\Scripts\Activate.ps1
 ```
@@ -31,7 +31,7 @@ py -m venv .venv
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc12-py3-none-any.whl
+./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc16-py3-none-any.whl
 source ./.venv/bin/activate
 canvas-ed-mcp --version
 ```
@@ -89,6 +89,21 @@ keyring:canvas-ed-mcp/default/ed
 
 ## 3. 首次配置
 
+在源码目录运行 `python -m pip install ".[gui]"`，或安装 wheel 时选择 `gui` 可选依赖。
+随后使用正式的首次配置入口：
+
+```text
+canvas-ed-setup
+```
+
+在源码目录也可以使用 `python -m canvas_ed_mcp.ui.first_run_window` 启动。
+
+它会使用真实 profile 路径和只读 Canvas/Ed 课程发现，再把真实课程列表交给已经验收的
+`Select → Map → Folders → Review` 流程。Credential 输入框只接受
+`keyring:canvas-ed-mcp/default/canvas` 这类引用，不接收或显示 token 本身。最终确认只创建
+新配置，不下载课程、不创建输出目录、不写 state，也不安装 launcher。该可安装入口尚不是
+签名或冻结后的桌面发行包。
+
 先预览，不写配置、状态或课程文件：
 
 ```text
@@ -115,7 +130,18 @@ canvas-ed-mcp doctor --profile default --show-paths
 canvas-ed-mcp config validate "<CONFIG_FILE>"
 ```
 
-以后增删课程或更改策略时，同样先预览再提交：
+以后增删课程、重新配对或修改每门课的下载内容时，直接打开图形化编辑器：
+
+```text
+canvas-ed-configure --profile default
+```
+
+也可以双击 `configure_courses`，或在日常菜单选择第 4 项。编辑器会自动载入并勾选
+当前课程，保存前显示准确的配置差异。这个版本不会迁移文件夹：已有 folder name
+只读；只有“没有同步历史，且原课程文件夹不存在或为空”的 source 可以重新配对，
+否则界面会显示锁定原因。保存只修改配置，不移动或删除文件，也不会自动开始同步。
+
+如果图形依赖不可用，仍可使用终端流程：
 
 ```text
 canvas-ed-mcp configure --profile default --dry-run
@@ -129,12 +155,24 @@ canvas-ed-mcp configure --profile default
 输出目录下的 `Canvas Ed MCP Launchers` 包含 Windows `.cmd`、macOS `.command` 或
 Linux `.sh` 启动脚本。双击 `canvas_ed_app` 会打开英文编号菜单；也可直接使用：
 
+安装 `gui` 可选依赖后，可以启动第一版日常桌面 dashboard：
+
+```text
+canvas-ed-app --profile default
+```
+
+它会显示当前 profile、已连接来源、本地输出目录，并在线程池中生成课程资料同步预览。
+正式 Apply 前仍需确认，而且只能应用刚才准确审核过的 plan；部分 provider 的 warning
+不会被隐藏。工作中关闭窗口会先请求协作式取消，等到安全边界后再释放 provider session。
+这是新增的预览入口；在桌面打包和 owner-device release gate 完成前，已有
+`canvas_ed_app` 启动脚本仍继续打开经过实测的终端菜单。
+
 | 启动脚本 | 用途 |
 |---|---|
 | `course_material_sync` | 更新所有已配置课程资料 |
 | `this_week_due` | 生成 `Due Dates/this-week-due.txt` |
 | `this_semester_due` | 按教学周生成全学期 Markdown checklist |
-| `configure_courses` | 预览并修改课程配置 |
+| `configure_courses` | 打开图形化课程重新配置 |
 | `health_check` | 检查版本、路径、profile 与 keyring |
 | `open_course_folder` | 打开课程输出目录 |
 
@@ -151,8 +189,10 @@ canvas-ed-mcp sync --profile default --dry-run
 canvas-ed-mcp sync --profile default
 canvas-ed-mcp due week --profile default
 canvas-ed-mcp due semester --profile default
+canvas-ed-mcp configure-gui --profile default
 canvas-ed-mcp launchers install --profile default
 canvas-ed-mcp open-course-folder --profile default
+canvas-ed-app --profile default
 ```
 
 只预览某门课时加入 `--course LOGICAL_COURSE_KEY`。移除 `--dry-run` 后只写本地 state

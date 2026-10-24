@@ -21,6 +21,22 @@ _WHEEL_PACKAGE_FILES = frozenset(
         "canvas_ed_mcp/__init__.py",
         "canvas_ed_mcp/__main__.py",
         "canvas_ed_mcp/app_menu.py",
+        "canvas_ed_mcp/application/__init__.py",
+        "canvas_ed_mcp/application/configure_controller.py",
+        "canvas_ed_mcp/application/configure_safety.py",
+        "canvas_ed_mcp/application/configure_workflow.py",
+        "canvas_ed_mcp/application/contracts.py",
+        "canvas_ed_mcp/application/daily_sync.py",
+        "canvas_ed_mcp/application/folder_actions.py",
+        "canvas_ed_mcp/application/fingerprints.py",
+        "canvas_ed_mcp/application/first_run.py",
+        "canvas_ed_mcp/application/profiles.py",
+        "canvas_ed_mcp/application/profile_status.py",
+        "canvas_ed_mcp/application/providers.py",
+        "canvas_ed_mcp/application/setup_controller.py",
+        "canvas_ed_mcp/application/setup_session.py",
+        "canvas_ed_mcp/application/setup_workflow.py",
+        "canvas_ed_mcp/application/sync_operation.py",
         "canvas_ed_mcp/cli.py",
         "canvas_ed_mcp/config.py",
         "canvas_ed_mcp/configure_flow.py",
@@ -52,8 +68,14 @@ _WHEEL_PACKAGE_FILES = frozenset(
         "canvas_ed_mcp/sync/model.py",
         "canvas_ed_mcp/sync/naming.py",
         "canvas_ed_mcp/sync/policy.py",
+        "canvas_ed_mcp/sync/reviewed.py",
         "canvas_ed_mcp/sync/state.py",
         "canvas_ed_mcp/sync/storage.py",
+        "canvas_ed_mcp/ui/__init__.py",
+        "canvas_ed_mcp/ui/configure_window.py",
+        "canvas_ed_mcp/ui/daily_dashboard.py",
+        "canvas_ed_mcp/ui/first_run_window.py",
+        "canvas_ed_mcp/ui/setup_window.py",
     }
 )
 _SDIST_REQUIRED = frozenset(
@@ -202,10 +224,12 @@ def _is_allowed_sdist_entry(name: str) -> bool:
     if name in {f"src/{package_name}" for package_name in _WHEEL_PACKAGE_FILES}:
         return True
     if name in {
+        "src/canvas_ed_mcp/application",
         "src/canvas_ed_mcp/due",
         "src/canvas_ed_mcp/providers",
         "src/canvas_ed_mcp/renderers",
         "src/canvas_ed_mcp/sync",
+        "src/canvas_ed_mcp/ui",
         "src/canvas_ed_mcp.egg-info",
     }:
         return True

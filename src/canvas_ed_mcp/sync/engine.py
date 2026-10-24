@@ -12,7 +12,7 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 
 from canvas_ed_mcp.config import CourseConfig, CourseSource
-from canvas_ed_mcp.providers.base import CourseContentProvider
+from canvas_ed_mcp.providers.base import ContentBatch, CourseContentProvider
 
 from .decisions import decide_install, decide_source
 from .locking import LockScope, SyncLock
@@ -30,6 +30,7 @@ from .naming import destination_for
 from .policy import PolicySkipReason, evaluate_item_policy, evaluate_stream_size
 from .storage import CourseFileIndex, install_new_atomic, resolve_contained_path
 from .state import (
+    ArchivedSourceState,
     InitializedSource,
     PolicySkipState,
     StateLoadError,
@@ -43,6 +44,37 @@ from .state import (
 class ExecutionMode(str, Enum):
     DRY_RUN = "dry_run"
     APPLY = "apply"
+
+
+class CheckpointStatus(str, Enum):
+    CURRENT = "current"
+    MIGRATED_COMPATIBLE = "migrated_compatible"
+    RECONCILIATION_REQUIRED = "reconciliation_required"
+
+
+def classify_source_checkpoint(
+    state: SyncState, *, course: CourseConfig, source: CourseSource
+) -> CheckpointStatus:
+    """Classify active state without treating old-folder history as current."""
+    checkpoint = state.checkpoint_for(
+        provider=source.provider, instance=source.instance, course_id=source.course_id
+    )
+    if checkpoint is None:
+        return CheckpointStatus.RECONCILIATION_REQUIRED
+    if (
+        checkpoint.course_key == course.key
+        and checkpoint.course_folder == course.folder
+        and checkpoint.reconcile_generation == source.reconcile_generation
+    ):
+        return CheckpointStatus.CURRENT
+    if (
+        checkpoint.course_key == course.key
+        and checkpoint.course_folder is None
+        and checkpoint.reconcile_generation == 0
+        and source.reconcile_generation == 0
+    ):
+        return CheckpointStatus.MIGRATED_COMPATIBLE
+    return CheckpointStatus.RECONCILIATION_REQUIRED
 
 
 _PROVIDER_OWNED_KINDS = {
@@ -244,20 +276,60 @@ def merge_source_result(
         for skip in result.policy_skips
     ):
         raise ValueError("result contains policy skips for another course source")
-    checkpoint = InitializedSource(result.course_key, source.provider, source.instance, source.course_id)
-    initialized = set(state.initialized_sources)
+    checkpoint = InitializedSource(
+        result.course_key, source.provider, source.instance, source.course_id,
+        source.reconcile_generation, course.folder,
+    )
+    prior_checkpoint = state.checkpoint_for(
+        provider=source.provider, instance=source.instance, course_id=source.course_id
+    )
+    status = classify_source_checkpoint(state, course=course, source=source)
+    if status is CheckpointStatus.RECONCILIATION_REQUIRED and not result.initialization_complete:
+        return state
+    initialized = {
+        item for item in state.initialized_sources
+        if (item.provider, item.instance, item.course_id)
+        != (source.provider, source.instance, source.course_id)
+    }
     if result.initialization_complete:
         initialized.add(checkpoint)
+    elif prior_checkpoint is not None:
+        initialized.add(prior_checkpoint)
     retained_sources = tuple(entry for entry in state.sources if not belongs_to_source(entry.key))
     retained_skips = tuple(
         entry for entry in state.policy_skips
-        if not (entry.course_key == course.key and belongs_to_source(entry.key))
+        if not belongs_to_source(entry.key)
     )
+    archived = list(state.archived_sources)
+    old_sources = tuple(entry for entry in state.sources if belongs_to_source(entry.key))
+    old_skips = tuple(
+        entry for entry in state.policy_skips
+        if prior_checkpoint is not None
+        and entry.course_key == prior_checkpoint.course_key
+        and belongs_to_source(entry.key)
+    )
+    if (
+        result.initialization_complete
+        and status is CheckpointStatus.RECONCILIATION_REQUIRED
+        and prior_checkpoint is not None
+        and (old_sources or old_skips)
+    ):
+        archived.append(ArchivedSourceState(
+            prior_checkpoint.course_key,
+            prior_checkpoint.provider,
+            prior_checkpoint.instance,
+            prior_checkpoint.course_id,
+            prior_checkpoint.reconcile_generation,
+            prior_checkpoint.course_folder,
+            old_sources,
+            old_skips,
+        ))
     return replace(
         state,
         sources=tuple(sorted((*retained_sources, *result.state_updates), key=lambda entry: entry.key.identity_tuple)),
         initialized_sources=tuple(sorted(initialized)),
         policy_skips=tuple(sorted((*retained_skips, *result.policy_skips), key=lambda entry: (entry.course_key, entry.key.identity_tuple))),
+        archived_sources=tuple(archived),
     )
 
 
@@ -299,6 +371,7 @@ def apply_source_transaction(
     backup_path: Path,
     state_lock: SyncLock,
     cache_dir: Path,
+    discovered_batch: ContentBatch | None = None,
 ) -> SourceTransactionResult:
     """Apply one source while preserving the required state -> course lock order.
 
@@ -324,23 +397,34 @@ def apply_source_transaction(
         course_key=course.key,
         course_root=course_root,
     )
-    previous = tuple(
+    all_previous = tuple(
         entry for entry in state.sources
         if (entry.key.provider, entry.key.instance, entry.key.course_id)
         == (source.provider, source.instance, source.course_id)
     )
+    status = classify_source_checkpoint(state, course=course, source=source)
+    prior_checkpoint = state.checkpoint_for(
+        provider=source.provider, instance=source.instance, course_id=source.course_id
+    )
+    binding_compatible = (
+        status in {CheckpointStatus.CURRENT, CheckpointStatus.MIGRATED_COMPATIBLE}
+        or (
+            prior_checkpoint is not None
+            and prior_checkpoint.course_key == course.key
+            and prior_checkpoint.course_folder == course.folder
+        )
+    )
+    previous = all_previous if binding_compatible else ()
+    if status is CheckpointStatus.RECONCILIATION_REQUIRED and source.initial_mode is InitialSyncMode.IMPORT_ALL:
+        previous = tuple(entry for entry in previous if entry.stored_file is not None)
     skips = tuple(
         entry for entry in state.policy_skips
-        if entry.course_key == course.key
+        if status in {CheckpointStatus.CURRENT, CheckpointStatus.MIGRATED_COMPATIBLE}
+        and entry.course_key == course.key
         and (entry.key.provider, entry.key.instance, entry.key.course_id)
         == (source.provider, source.instance, source.course_id)
     )
-    initialized = state.initialized_for(
-        course_key=course.key,
-        provider=source.provider,
-        instance=source.instance,
-        course_id=source.course_id,
-    )
+    initialized = status in {CheckpointStatus.CURRENT, CheckpointStatus.MIGRATED_COMPATIBLE}
     with course_lock:
         result = sync_course_source(
             course=course,
@@ -351,8 +435,10 @@ def apply_source_transaction(
             execution=ExecutionMode.APPLY,
             initialized=initialized,
             policy_skips=skips,
+            reconciliation_required=status is CheckpointStatus.RECONCILIATION_REQUIRED,
             course_lock=course_lock,
             cache_dir=cache_dir,
+            discovered_batch=discovered_batch,
         )
         committed = commit_source_result(
             state,
@@ -490,25 +576,39 @@ def preview_configured_source(
             raise
         state = new_state(profile=profile, output_root=output_root)
     source_identity = (source.provider, source.instance, source.course_id)
+    status = classify_source_checkpoint(state, course=course, source=source)
+    prior_checkpoint = state.checkpoint_for(
+        provider=source.provider, instance=source.instance, course_id=source.course_id
+    )
+    binding_compatible = (
+        status in {CheckpointStatus.CURRENT, CheckpointStatus.MIGRATED_COMPATIBLE}
+        or (
+            prior_checkpoint is not None
+            and prior_checkpoint.course_key == course.key
+            and prior_checkpoint.course_folder == course.folder
+        )
+    )
+    previous = tuple(
+        entry for entry in state.sources
+        if (entry.key.provider, entry.key.instance, entry.key.course_id) == source_identity
+    ) if binding_compatible else ()
+    if status is CheckpointStatus.RECONCILIATION_REQUIRED and source.initial_mode is InitialSyncMode.IMPORT_ALL:
+        previous = tuple(entry for entry in previous if entry.stored_file is not None)
     return sync_course_source(
         course=course,
         source=source,
         provider=provider,
         output_root=output_root,
-        previous=tuple(
-            entry for entry in state.sources
-            if (entry.key.provider, entry.key.instance, entry.key.course_id) == source_identity
-        ),
+        previous=previous,
         execution=ExecutionMode.DRY_RUN,
-        initialized=state.initialized_for(
-            course_key=course.key, provider=source.provider,
-            instance=source.instance, course_id=source.course_id,
-        ),
+        initialized=status in {CheckpointStatus.CURRENT, CheckpointStatus.MIGRATED_COMPATIBLE},
         policy_skips=tuple(
             entry for entry in state.policy_skips
-            if entry.course_key == course.key
+            if status in {CheckpointStatus.CURRENT, CheckpointStatus.MIGRATED_COMPATIBLE}
+            and entry.course_key == course.key
             and (entry.key.provider, entry.key.instance, entry.key.course_id) == source_identity
         ),
+        reconciliation_required=status is CheckpointStatus.RECONCILIATION_REQUIRED,
     )
 
 
@@ -521,9 +621,11 @@ def sync_course_source(
     previous: tuple[PreviousSource, ...],
     execution: ExecutionMode,
     initialized: bool,
+    reconciliation_required: bool = False,
     policy_skips: tuple[PolicySkipState, ...] = (),
     course_lock: SyncLock | None = None,
     cache_dir: Path | None = None,
+    discovered_batch: ContentBatch | None = None,
 ) -> SourceSyncResult:
     """Synchronize one confirmed course source without saving global state.
 
@@ -534,6 +636,8 @@ def sync_course_source(
         raise ValueError("source is not configured for this course")
     if not isinstance(initialized, bool):
         raise ValueError("initialized must be a boolean")
+    if not isinstance(reconciliation_required, bool):
+        raise ValueError("reconciliation_required must be a boolean")
     if not isinstance(execution, ExecutionMode):
         raise ValueError("execution must be an ExecutionMode")
     if provider.provider_name != source.provider or provider.instance != source.instance:
@@ -590,13 +694,18 @@ def sync_course_source(
             initialized, execution=execution,
         )
 
-    try:
-        batch = provider.list_items(source.course_id, kinds=requested)
-    except Exception:
-        return SourceSyncResult(
-            course.key, source.provider, (), previous,
-            ("provider_discovery_failed",), initialized, execution=execution,
-        )
+    if discovered_batch is None:
+        try:
+            batch = provider.list_items(source.course_id, kinds=requested)
+        except Exception:
+            return SourceSyncResult(
+                course.key, source.provider, (), previous,
+                ("provider_discovery_failed",), initialized, execution=execution,
+            )
+    else:
+        if not isinstance(discovered_batch, ContentBatch):
+            raise ValueError("discovered_batch must be a ContentBatch or None")
+        batch = discovered_batch
     if (
         batch.provider != source.provider
         or batch.instance != source.instance
@@ -662,7 +771,12 @@ def sync_course_source(
         )
         decision = decide_source(item, old, mode=mode)
         if decision.action is SyncAction.RECORD_ONLY:
-            update = PreviousSource(item.key, item.signature, old.stored_file if old else None)
+            retained_file = (
+                old.stored_file
+                if old is not None and old.signature == item.signature
+                else None
+            )
+            update = PreviousSource(item.key, item.signature, retained_file)
             updates.append(update)
             results.append(ItemSyncResult(_item_token(item.key), decision.action.value, decision.reason.value))
             continue
@@ -756,6 +870,14 @@ def sync_course_source(
             if temporary is not None and not _unlink_temporary(temporary):
                 source_issue_codes.append("cache_cleanup_pending")
 
+    if reconciliation_required:
+        source_issue_codes.append(
+            "reconcile_completed" if batch.complete else (
+                "reconcile_baseline_pending"
+                if source.initial_mode is InitialSyncMode.BASELINE_FROM_NOW
+                else "reconcile_import_all_pending"
+            )
+        )
     return SourceSyncResult(
         course.key,
         source.provider,

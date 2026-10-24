@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import io
 import json
 import os
@@ -35,6 +36,13 @@ def build_parser() -> argparse.ArgumentParser:
     configure.add_argument("--config", type=Path)
     configure.add_argument("--dry-run", action="store_true")
     configure.set_defaults(handler=_configure)
+
+    configure_gui = subparsers.add_parser(
+        "configure-gui", help="open graphical course reconfiguration"
+    )
+    configure_gui.add_argument("--profile", default="default")
+    configure_gui.add_argument("--config", type=Path)
+    configure_gui.set_defaults(handler=_configure_gui)
 
     sync = subparsers.add_parser("sync", help="synchronize confirmed Canvas/Ed courses")
     sync.add_argument("--profile", default="default")
@@ -213,6 +221,26 @@ def _configure(args: argparse.Namespace) -> int:
     if committed and not args.dry_run:
         _install_launchers_after_commit(args.profile, config_path)
     return 0 if committed or args.dry_run else 2
+
+
+def _configure_gui(args: argparse.Namespace) -> int:
+    try:
+        from .ui.configure_window import main as configure_main
+    except ImportError:
+        print(
+            "Graphical reconfiguration is unavailable; continuing in the terminal.",
+            file=sys.stderr,
+        )
+        fallback = argparse.Namespace(
+            profile=args.profile,
+            config=args.config,
+            dry_run=False,
+        )
+        return _configure(fallback)
+    forwarded = ["--profile", args.profile]
+    if args.config is not None:
+        forwarded.extend(("--config", str(args.config)))
+    return int(configure_main(forwarded))
 
 
 def _config_for_args(args: argparse.Namespace):
@@ -422,7 +450,7 @@ def _app(args: argparse.Namespace) -> int:
         "1": lambda: _menu_sync(common),
         "2": lambda: main(["due", "week", *common]),
         "3": lambda: main(["due", "semester", *common]),
-        "4": lambda: main(["configure", *common]),
+        "4": lambda: main(["configure-gui", *common]),
         "5": lambda: main(["doctor", "--profile", args.profile, "--show-paths"]),
         "6": lambda: main(["open-course-folder", *common]),
         "7": lambda: main(["launchers", "install", *common]),
@@ -459,15 +487,69 @@ def _menu_sync_call(argv: list[str]) -> tuple[int, dict[str, object] | None]:
     with redirect_stdout(output):
         exit_code = main(argv)
     rendered = output.getvalue()
-    print(rendered, end="")
     for line in reversed(rendered.splitlines()):
         try:
             candidate = json.loads(line)
         except (TypeError, json.JSONDecodeError):
             continue
         if isinstance(candidate, dict):
+            _print_menu_sync_report(candidate)
             return exit_code, candidate
+    print(rendered, end="")
     return exit_code, None
+
+
+def _print_menu_sync_report(report: dict[str, object]) -> None:
+    sources = report.get("sources")
+    if not isinstance(sources, list):
+        print("Course material report could not be summarized safely.")
+        return
+    preview = any(
+        isinstance(source, dict) and source.get("dry_run") is True
+        for source in sources
+    )
+    print("\nCourse material preview" if preview else "\nCourse material result")
+    print(f"Checked {len(sources)} configured source(s):")
+    action_labels = {
+        "would_fetch": "to download",
+        "record_only": "baseline records",
+        "skip": "unchanged",
+        "policy_skip": "skipped by policy",
+        "install_new": "downloaded",
+        "install_separately": "saved separately",
+        "deduplicate": "already present",
+        "failed": "failed",
+        "block": "blocked",
+    }
+    issue_labels = {
+        "authorization_failed": "some content was not permitted by the provider",
+        "authentication_failed": "the token was rejected",
+        "provider_discovery_failed": "the course contents could not be listed",
+        "item_schema_drift": "one or more items used an unfamiliar format",
+    }
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        course = str(source.get("course_key") or "Unknown course")
+        provider = str(source.get("provider") or "unknown").title()
+        actions = source.get("actions")
+        counts = Counter(actions) if isinstance(actions, list) else Counter()
+        parts = [
+            f"{count} {action_labels.get(action, action.replace('_', ' '))}"
+            for action, count in counts.items()
+        ]
+        summary = ", ".join(parts) if parts else "no changes"
+        issues = source.get("issue_codes")
+        if isinstance(issues, list) and issues:
+            warnings = "; ".join(
+                issue_labels.get(str(issue), str(issue).replace("_", " "))
+                for issue in issues
+            )
+            summary += f" — warning: {warnings}"
+        print(f"- {course} — {provider}: {summary}")
+    run_issues = report.get("run_issue_codes")
+    if isinstance(run_issues, list) and run_issues:
+        print("Run warning: " + ", ".join(str(issue) for issue in run_issues))
 
 
 def _menu_sync_report_is_actionable(
@@ -487,13 +569,15 @@ def _menu_sync_report_is_actionable(
         or len(sources) != selected
     ):
         return False
+    has_actionable_work = False
     for source in sources:
         if not isinstance(source, dict) or source.get("committed") is not committed:
             return False
         actions = source.get("actions")
-        if not isinstance(actions, list) or not actions:
+        if not isinstance(actions, list):
             return False
-    return True
+        has_actionable_work = has_actionable_work or bool(actions)
+    return has_actionable_work
 
 
 def _open_course_folder(args: argparse.Namespace) -> int:
@@ -757,6 +841,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
     return int(args.handler(args))
+
+
+def configure_gui_main(argv: Sequence[str] | None = None) -> int:
+    """Parse desktop options before importing the optional Qt runtime."""
+    parser = argparse.ArgumentParser(
+        prog="canvas-ed-configure",
+        description="Reconfigure an existing Canvas & Ed profile",
+    )
+    parser.add_argument("--profile", default="default")
+    parser.add_argument("--config", type=Path)
+    args = parser.parse_args(argv)
+    return _configure_gui(args)
 
 
 def course_sync_main(argv: Sequence[str] | None = None) -> int:

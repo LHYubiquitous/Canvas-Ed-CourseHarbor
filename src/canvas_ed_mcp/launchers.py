@@ -15,7 +15,7 @@ _COMMANDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("this_week_due", ("due", "week")),
     ("this_semester_due", ("due", "semester")),
     ("canvas_ed_app", ("app",)),
-    ("configure_courses", ("configure",)),
+    ("configure_courses", ("configure-gui",)),
     ("health_check", ("doctor", "--show-paths")),
     ("open_course_folder", ("open-course-folder",)),
 )

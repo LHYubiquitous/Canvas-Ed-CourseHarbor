@@ -23,7 +23,13 @@ each installed distribution remain authoritative.
 | Apache and BSD dual license | python-dateutil |
 | MPL-2.0 | certifi |
 | PSF-2.0 / Python Software Foundation License | pywin32, typing-extensions |
+| LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only | PySide6, PySide6-Addons, PySide6-Essentials, PySide6-PDF, PySide6-WebEngine, shiboken6 |
 
 Optional `gradescopeapi` support is disabled by default and uses an unofficial
 scraping integration. External Canvas, Ed, and Gradescope services, and any course
 material accessed through them, are not distributed or licensed by this project.
+
+The optional `gui` extra installs Qt for Python. It is disabled by default. Anyone
+redistributing a frozen or bundled GUI must separately preserve the applicable Qt
+license notices and replacement/relinking rights; this source dependency inventory is
+not by itself a frozen-application compliance packet.

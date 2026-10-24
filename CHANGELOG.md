@@ -3,6 +3,80 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
+## [0.2.0rc16] - 2026-10-23
+
+### Human-readable reviewed sync
+
+- Carries configured course folder, code, name, and term metadata through the
+  reviewed-sync summary without changing the stable internal source identity.
+- Shows human-readable course metadata and provider names in the dashboard table
+  and apply confirmation instead of internal course keys, hostnames, and numeric IDs.
+- Replaces the UI regression expectations that encoded the internal-identity display
+  and adds application coverage for preview/apply metadata and safe folder fallback.
+- Rebuilds the macOS owner-device runner after the rc15 packet duplicated shell quotes
+  and failed before starting the GUI.
+- Cancels pending setup-window focus delivery before Qt destroys its child widgets,
+  preventing a Windows Python 3.14 shutdown access violation in isolated GUI tests.
+
+This candidate supersedes the failed, unpublished rc15 packet. Publication remains
+blocked until the exact rc16 wheel passes a fresh macOS owner-device gate and private
+three-system CI.
+
+## [0.2.0rc15] - 2026-10-23
+
+### macOS button contrast
+
+- Gives ordinary dashboard and confirmation-dialog buttons an explicit dark
+  foreground whenever the application supplies their light surface.
+- Prevents a macOS dark system palette from producing white button labels on the
+  application's white button background.
+- Adds macOS palette regression coverage while preserving the reviewed Windows
+  disabled-button and primary-action styling.
+
+This candidate supersedes the unpublished rc14 wheel and requires a fresh automated
+release gate plus macOS owner-device confirmation before publication.
+
+## [0.2.0rc14] - 2026-10-22
+
+### Non-destructive course reconfiguration
+
+- Allows existing courses and individual Canvas/Ed sources to be deactivated; their
+  downloaded files stay in place and later sync runs omit the inactive sources.
+- Allows retired sources to be reactivated, existing Canvas and Ed courses to be
+  relinked, and a newly adopted provider to join an initialized logical course.
+- Makes `Start from now` and `Import all history` selectable again for existing
+  courses. Each explicit reset is consumed once by the next successful sync, after
+  which normal incremental synchronization resumes.
+- Adds versioned reconciliation checkpoints and archived ownership evidence. Old
+  files are neither deleted nor moved when a source is reset or rebound.
+- Keeps folder migration out of scope: existing folder names remain read-only.
+
+This candidate requires the complete local gate plus Windows and macOS owner review
+before publication.
+
+## [0.2.0rc13] - 2026-10-22
+
+### Graphical course reconfiguration
+
+- Adds a PySide6 editor for an existing profile. Current courses, Canvas/Ed mappings,
+  folder names, content selections, file-size policy, and initial-download choices are
+  loaded from the saved configuration instead of starting from an empty setup.
+- Allows adding and removing courses and safely remapping sources that have no sync
+  history and whose existing course folder is absent or empty. Initialized or
+  non-empty mappings remain locked with a user-facing reason.
+- Saves only the reviewed configuration diff. Every save rechecks configuration,
+  state, and folder evidence; it never moves, deletes, or downloads course files.
+- Opens graphical reconfiguration from the daily menu and new profile launchers,
+  while retaining the terminal `configure` command as a fallback.
+
+### Compatibility and CI
+
+- Declares Python 3.10–3.14 support while upstream MCP remains incompatible with
+  Python 3.15, and fixes platform-neutral output-root fixtures in the CI suite.
+
+This candidate still requires the release gate, remote CI, and Windows/macOS owner
+review before publication.
+
 ## [0.2.0rc12] - 2026-10-20
 
 ### User documentation

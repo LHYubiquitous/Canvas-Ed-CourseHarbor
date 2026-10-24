@@ -43,6 +43,15 @@ class DistributionAuditTests(unittest.TestCase):
 
             audit_archive(wheel)
 
+    def test_wheel_allowlist_matches_repository_runtime_package(self) -> None:
+        package_root = REPOSITORY_ROOT / "src" / "canvas_ed_mcp"
+        actual = {
+            path.relative_to(package_root.parent).as_posix()
+            for path in package_root.rglob("*.py")
+        }
+
+        self.assertEqual(actual, _WHEEL_PACKAGE_FILES)
+
     def test_wheel_rejects_private_or_non_package_entries(self) -> None:
         for unsafe in (
             "credentials_local.json",

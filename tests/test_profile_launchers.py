@@ -32,6 +32,10 @@ class ProfileLauncherTests(unittest.TestCase):
         self.assertIn('--profile "semester-2"', content)
         self.assertIn('--config "C:\\Config Folder\\semester-2.toml"', content)
         self.assertNotIn("credential", content.casefold())
+        self.assertIn(
+            "canvas_ed_mcp configure-gui",
+            rendered["configure_courses.cmd"],
+        )
 
     def test_windows_launcher_escapes_percent_expansion(self) -> None:
         rendered = render_launchers(

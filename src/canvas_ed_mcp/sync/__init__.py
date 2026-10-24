@@ -36,12 +36,14 @@ from .storage import (
 )
 from .state import (
     CURRENT_STATE_SCHEMA,
+    ArchivedSourceState,
     StateLoadError,
     StateMigrationError,
     SyncState,
     InitializedSource,
     PolicySkipState,
     load_state,
+    load_state_bytes,
     migrate_v3_state_file,
     new_state,
     save_state,
@@ -50,6 +52,7 @@ from .state import (
 __all__ = [
     "AtomicPublishResult",
     "AtomicPublishUnsupported",
+    "ArchivedSourceState",
     "CourseFileIndex",
     "CURRENT_STATE_SCHEMA",
     "DecisionReason",
@@ -83,6 +86,7 @@ __all__ = [
     "evaluate_stream_size",
     "install_new_atomic",
     "load_state",
+    "load_state_bytes",
     "migrate_v3_state_file",
     "new_state",
     "resolve_contained_path",

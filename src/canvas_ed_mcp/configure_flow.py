@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import AbstractSet, Callable, Mapping
 
 from .config import (
     AppConfig,
@@ -162,7 +162,7 @@ def _render_preview(
     if added:
         lines.append("Added courses:")
         for change in added:
-            modes = modes_by_key[change.course_key]
+            modes = modes_by_key.get(change.course_key, ())
             lines.append(
                 f"+ {change.course_key} -> {change.after.folder}"  # type: ignore[union-attr]
             )
@@ -200,6 +200,33 @@ def _render_preview(
                     lines.append(
                         f"  + {source.label()} [initial={selection.mode.value}]"
                     )
+    reset_only = tuple(
+        selection
+        for selection in initial_sync
+        if not any(
+            change.after is not None
+            and selection.source is not None
+            and selection.source in {
+                SourceIdentity.from_source(source) for source in change.after.sources
+            }
+            and (
+                change.before is None
+                or selection.source not in {
+                    SourceIdentity.from_source(source) for source in change.before.sources
+                }
+            )
+            for change in changes
+        )
+    )
+    if reset_only:
+        lines.append("Next-sync resets:")
+        for selection in reset_only:
+            if selection.source is not None:
+                lines.append(
+                    f"~ {selection.course_key}: {selection.source.label()} "
+                    f"[{selection.mode.value}; one-time, then incremental]"
+                )
+    lines.append("No existing course file will be deleted or moved.")
     return "\n".join(lines)
 
 
@@ -209,6 +236,7 @@ def build_configure_plan(
     *,
     new_course_modes: Mapping[str, InitialSyncMode] | None = None,
     new_source_modes: Mapping[SourceIdentity, InitialSyncMode] | None = None,
+    safely_relocatable_sources: AbstractSet[SourceIdentity] = frozenset(),
 ) -> ConfigurePlan:
     """Build a deterministic config diff without touching config, state or output."""
     if not isinstance(current, AppConfig) or not isinstance(proposed, AppConfig):
@@ -244,31 +272,46 @@ def build_configure_plan(
         for course in proposed.courses
         for source in course.sources
     }
-    for identity in current_source_owner.keys() & proposed_source_owner.keys():
-        if current_source_owner[identity] != proposed_source_owner[identity]:
-            raise ValueError("moving a remote source requires a separate output/state migration")
+    if not isinstance(safely_relocatable_sources, AbstractSet) or not all(
+        isinstance(identity, SourceIdentity)
+        for identity in safely_relocatable_sources
+    ):
+        raise ValueError("safely_relocatable_sources must contain SourceIdentity values")
+    moved_sources = {
+        identity
+        for identity in current_source_owner.keys() & proposed_source_owner.keys()
+        if current_source_owner[identity] != proposed_source_owner[identity]
+    }
     added_sources = set(proposed_source_owner) - set(current_source_owner)
-    retired_identities = {
-        SourceIdentity.from_source(retired.source): retired.former_course_key
+    retired_values = {
+        SourceIdentity.from_source(retired.source): retired
         for retired in current.retired_sources
     }
-    blocked_reattachments = added_sources & retired_identities.keys()
-    if blocked_reattachments:
-        raise ValueError("reattaching a detached remote source requires explicit migration")
+    historical_source_values = {
+        **{identity: retired.source for identity, retired in retired_values.items()},
+        **current_source_values,
+    }
 
     initial_sync: list[InitialSyncSelection] = []
     if new_source_modes is not None:
-        if set(new_source_modes) != added_sources:
-            raise ValueError("every newly mapped source requires exactly one initial sync mode")
-        for identity in sorted(added_sources):
+        selected_identities = set(new_source_modes)
+        if not (added_sources | moved_sources).issubset(selected_identities):
+            raise ValueError(
+                "every newly mapped, reactivated or moved source requires exactly one next-sync mode"
+            )
+        if not selected_identities.issubset(proposed_source_owner):
+            raise ValueError("next-sync modes must refer to proposed active sources")
+        for identity in sorted(selected_identities):
             mode = new_source_modes[identity]
             if not isinstance(mode, InitialSyncMode):
-                raise ValueError("new source modes must be InitialSyncMode values")
+                raise ValueError("next-sync modes must be InitialSyncMode values")
             initial_sync.append(
                 InitialSyncSelection(proposed_source_owner[identity], mode, identity)
             )
     else:
         legacy_modes = {} if new_course_modes is None else new_course_modes
+        if moved_sources:
+            raise ValueError("moved sources require per-source next-sync modes")
         if set(legacy_modes) != set(added_keys):
             raise ValueError("every added course requires exactly one initial sync mode")
         for key in added_keys:
@@ -293,13 +336,24 @@ def build_configure_plan(
         normalized_sources = []
         for source in course.sources:
             identity = SourceIdentity.from_source(source)
-            if identity in added_sources:
+            if identity in selected_modes:
+                previous = historical_source_values.get(identity)
+                generation = 0 if previous is None else previous.reconcile_generation + 1
                 source = source.model_copy(
-                    update={"initial_mode": selected_modes[identity]}
+                    update={
+                        "initial_mode": selected_modes[identity],
+                        "reconcile_generation": generation,
+                    }
                 )
             else:
+                previous = current_source_values.get(identity)
+                if previous is None:
+                    raise ValueError("new active sources require an explicit next-sync mode")
                 source = source.model_copy(
-                    update={"initial_mode": current_source_values[identity].initial_mode}
+                    update={
+                        "initial_mode": previous.initial_mode,
+                        "reconcile_generation": previous.reconcile_generation,
+                    }
                 )
             normalized_sources.append(source)
         normalized_proposed[key] = course.model_copy(
@@ -358,6 +412,8 @@ def build_configure_plan(
             source=current_source_values[identity],
             former_course_key=current_source_owner[identity],
         )
+    for identity in proposed_source_owner:
+        retired_by_identity.pop(identity, None)
 
     effective = AppConfig(
         profile=current.profile,
@@ -365,6 +421,7 @@ def build_configure_plan(
         platforms=proposed.platforms,
         courses=tuple(retained_courses),
         retired_sources=tuple(retired_by_identity[key] for key in sorted(retired_by_identity)),
+        daily_use=proposed.daily_use,
     )
     platforms_changed = current.platforms != proposed.platforms
     initial_tuple = tuple(initial_sync)

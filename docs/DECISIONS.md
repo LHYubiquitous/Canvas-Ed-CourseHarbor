@@ -76,3 +76,24 @@
 - Why: 只读默认面足以覆盖课程资料拉取，减少非官方 Gradescope 登录依赖、凭据面和误操作风险，同时不删除现有用户可能依赖的能力。
 - Compatibility: legacy 单文件 server 在迁移期间继续保持原工具面；新 package 的默认配置不继承 legacy 写权限。
 - Revisit: 完成真实只读 integration、权限提示和写操作 contract tests 后，再决定公开版本是否提供显式写能力预设。
+
+## ADR-009 — PySide6 / Qt Widgets 作为正式 GUI 实现框架
+
+- Status: **ACCEPTED FOR IMPLEMENTATION; RELEASE GATES OPEN**
+- Context: 300-course framework evidence spikes、2026-10-22 owner-only Windows 人工测试，以及首次配置中大量课程选择造成的认知负担。
+- Options: (A) PySide6 / Qt Widgets；(B) wxPython；(C) Tkinter / ttk；(D) 暂停 desktop GUI，回到 enhanced TUI 或 packaged local web UI。
+- Decision: 后续 GUI implementation 只推进 PySide6 / Qt Widgets。wxPython 与 Tkinter 停止 feature work，现有 spike、测试和测量结果作为历史比较证据保留。GUI 必须继续通过 typed application-service boundary 复用现有 setup、sync、due、provider、configuration、secret 与 MCP 语义，不得从 Qt event handler 调用 CLI、解析 stdout 或复制 domain logic。
+- Why: 在 owner-only Windows 的迭代人工测试中，PySide6 的 course catalogue 信息层级、search/filter、批量选择、显式 mapping、link/separate 决策撤回、folder settings 与 exact review 流程最符合用户预期。Qt model/view、queued signals、threading primitives 与 cross-platform accessibility foundation 也更适合后续 thin adapter。Tkinter 在当前显示缩放下清晰度不足，且 modifier-key multiple selection 不适合整学期选课。wxPython spike 仍存在未修的 mapping recovery 缺陷：`Keep as separate courses` 会移除 pending suggestion，却没有可见 Undo；这是本项目 spike 缺陷，不是对 wxPython 一般能力的否定。
+- Trade-offs: PySide6 runtime 与冻结包预计更大；community binaries 的 LGPLv3 合规、notices 与 replacement/relinking 权利需要正式方案。当前 source-widget initial-render maximum 为 735 ms，超过 provisional 500 ms threshold。Physical keyboard、Narrator/NVDA、VoiceOver、Windows frozen artifact、macOS bundle、signing、notarization、packaged start-up/RSS 均仍为 `NOT_RUN` 或 `DEGRADED`。
+- Constraints: 框架选择仅授权 implementation，不代表 release readiness。CLI、launchers 与 MCP 必须继续独立可用；network/filesystem work 不得阻塞 GUI thread；review/apply、stale-plan、partial-warning、redaction 与 safe cancellation 规则保持不变。
+- Revisit: 若 PySide6 无法形成可接受的 license-compliance packet、Windows/macOS 可复现安装包、assistive-technology journey，或在等价 packaged measurement 中无法满足经确认的启动/响应阈值，则重新评估 wxPython 或其他产品形态。
+
+## ADR-010 — Setup 的首个正式写入仅创建已确认配置
+
+- Status: **IMPLEMENTED IN SOURCE; PACKAGING GATES OPEN**
+- Context: PySide6 已能生成 exact setup preview，但 synthetic preview 必须继续保持 zero-write；真实首次配置仍缺 Profile/Connect/Discover host。
+- Decision: Review 页面本身不拥有写权限。只有 host 显式注入 `ConfigOnlySetupSaver` 时才显示 `Save configuration`。保存对象必须是当前 `SetupController` 中同一个、仍为 current 的 review；proof 覆盖 config、可见 preview 与 per-course initial mode，并在写入前再次校验目标 revision。当前能力只允许 create-new TOML config，既不覆盖已有配置，也不创建课程目录、保存 secret、执行下载/initial sync、修复 launcher 或调用 due/MCP。
+- UX and failure boundary: 点击保存先显示 profile、config path、output root、course/source counts 与 zero-download 说明；文件写入在 Qt worker thread 完成。写入期间禁止 Back、Exit 与重复保存；成功后进入明确的 saved/close 状态。UI 只显示 stable issue code 对应的安全文案，不显示 exception text、provider payload 或 credential。
+- Compatibility: 未注入 capability 的 synthetic launcher 仍为 `Preview only`，没有隐藏的 commit action。CLI、sync、due、MCP 与 provider 实现未改变。
+- Host integration: `FirstRunWindow` 已接入真实 profile path、`env:`/`keyring:` reference、后台只读 Canvas/Ed discovery、显式 partial acceptance 与现有 `SetupController`。迟到 worker result 由 immutable generation 拒绝；失败 provider 在“仅继续可用平台”后会被禁用。安装 `gui` 可选依赖后的正式入口为 `canvas-ed-setup`；源码目录仍可使用 `python -m canvas_ed_mcp.ui.first_run_window`。
+- Revisit: raw token 输入和 keyring 写入必须另行设计可审核、可恢复的 secret transaction；packaging、installer/launcher integration 与首次同步 apply 也不扩大本 ADR 的 config-only 写入范围。

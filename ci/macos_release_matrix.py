@@ -27,9 +27,9 @@ except ModuleNotFoundError:  # direct `python ci/macos_release_matrix.py`
     from release_gate import read_project_version
 
 BASELINE_ANCESTOR = "c305be28882dcedb3f93fd197a9218746c4d05d2"
-DEFAULT_PYTHONS = ("3.10", "3.15")
+DEFAULT_PYTHONS = ("3.10", "3.14")
 REVIEWED_UV_VERSION = "uv 0.11.28"
-_PYTHON_SELECTOR = re.compile(r"3\.(?:10|11|12|13|14|15)\Z")
+_PYTHON_SELECTOR = re.compile(r"3\.(?:10|11|12|13|14)\Z")
 PRIVATE_SENTINELS = (
     "credentials_local.json",
     ".course_update_state.json",
@@ -219,7 +219,7 @@ def print_plan(pythons: Sequence[str]) -> None:
 def normalize_python_versions(values: Sequence[str] | None) -> tuple[str, ...]:
     selected = tuple(dict.fromkeys(values or DEFAULT_PYTHONS))
     if not selected or any(not _PYTHON_SELECTOR.fullmatch(value) for value in selected):
-        raise ValueError("Python versions must be one of 3.10 through 3.15")
+        raise ValueError("Python versions must be one of 3.10 through 3.14")
     return selected
 
 

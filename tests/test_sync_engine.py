@@ -25,7 +25,7 @@ from canvas_ed_mcp.sync.model import (
     RemoteKind,
     SourceKey,
 )
-from canvas_ed_mcp.sync.state import new_state
+from canvas_ed_mcp.sync.state import load_state, new_state
 
 
 class FakeProvider:
@@ -71,6 +71,112 @@ def item(kind: RemoteKind, remote_id: str, signature: str = "r1") -> RemoteItem:
 
 
 class SyncEngineTests(unittest.TestCase):
+    def _apply_paths(self, root: Path) -> dict[str, Path]:
+        return {
+            "state_path": root / "state.json",
+            "backup_path": root / "state.backup.json",
+            "lock_dir": root / ".locks",
+            "cache_dir": root / ".cache",
+        }
+
+    def test_reconcile_import_all_is_consumed_once_then_incremental(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            course, baseline_source = self.course(InitialSyncMode.BASELINE_FROM_NOW)
+            provider = FakeProvider((item(RemoteKind.RESOURCE, "existing"),))
+            apply_configured_source(
+                profile="test", course=course, source=baseline_source,
+                provider=provider, output_root=root, **self._apply_paths(root),
+            )
+            self.assertEqual(0, provider.binary_calls)
+
+            import_source = baseline_source.model_copy(update={
+                "initial_mode": InitialSyncMode.IMPORT_ALL,
+                "reconcile_generation": 1,
+            })
+            import_course = course.model_copy(update={"sources": (import_source,)})
+            first = apply_configured_source(
+                profile="test", course=import_course, source=import_source,
+                provider=provider, output_root=root, **self._apply_paths(root),
+            )
+            second = apply_configured_source(
+                profile="test", course=import_course, source=import_source,
+                provider=provider, output_root=root, **self._apply_paths(root),
+            )
+
+        self.assertTrue(first.commit.committed)
+        self.assertTrue(second.commit.committed)
+        self.assertEqual(1, provider.binary_calls)
+        self.assertEqual("skip", second.source_result.items[0].action)
+
+    def test_reconcile_baseline_records_change_without_fetching_or_rebinding_old_bytes(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            course, source = self.course(InitialSyncMode.IMPORT_ALL)
+            provider = FakeProvider((item(RemoteKind.RESOURCE, "notes", "r1"),))
+            first = apply_configured_source(
+                profile="test", course=course, source=source,
+                provider=provider, output_root=root, **self._apply_paths(root),
+            )
+            old_record = first.commit.state.sources[0]
+            old_path = root / Path(*old_record.stored_file.output_relative_path.parts)
+            old_bytes = old_path.read_bytes()
+            baseline_source = source.model_copy(update={
+                "initial_mode": InitialSyncMode.BASELINE_FROM_NOW,
+                "reconcile_generation": 1,
+            })
+            baseline_course = course.model_copy(update={"sources": (baseline_source,)})
+            provider.items = (item(RemoteKind.RESOURCE, "notes", "r2"),)
+            reset = apply_configured_source(
+                profile="test", course=baseline_course, source=baseline_source,
+                provider=provider, output_root=root, **self._apply_paths(root),
+            )
+            old_after = old_path.read_bytes()
+
+        self.assertTrue(reset.commit.committed)
+        self.assertEqual(1, provider.binary_calls)
+        self.assertIsNone(reset.commit.state.sources[0].stored_file)
+        self.assertEqual(old_bytes, old_after)
+
+    def test_rebind_ignores_old_folder_history_and_archives_without_deleting_old_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            course, source = self.course(InitialSyncMode.IMPORT_ALL)
+            provider = FakeProvider((item(RemoteKind.RESOURCE, "notes"),))
+            first = apply_configured_source(
+                profile="test", course=course, source=source,
+                provider=provider, output_root=root, **self._apply_paths(root),
+            )
+            old_record = first.commit.state.sources[0]
+            old_path = root / Path(*old_record.stored_file.output_relative_path.parts)
+            old_bytes = old_path.read_bytes()
+            rebound_source = source.model_copy(update={"reconcile_generation": 1})
+            rebound_course = course.model_copy(update={
+                "key": "logical-2", "folder": "COMP0002",
+                "sources": (rebound_source,),
+            })
+            rebound = apply_configured_source(
+                profile="test", course=rebound_course, source=rebound_source,
+                provider=provider, output_root=root, **self._apply_paths(root),
+            )
+            durable = load_state(
+                root / "state.json", profile="test", output_root=root
+            )
+            old_after = old_path.read_bytes()
+            archived_key = durable.archived_sources[0].course_key
+            active_key = durable.initialized_sources[0].course_key
+            has_new_file = any(
+                entry.stored_file is not None
+                and entry.stored_file.output_relative_path.parts[0] == "COMP0002"
+                for entry in durable.sources
+            )
+
+        self.assertTrue(rebound.commit.committed)
+        self.assertEqual(old_bytes, old_after)
+        self.assertEqual("logical-1", archived_key)
+        self.assertEqual("logical-2", active_key)
+        self.assertTrue(has_new_file)
+
     def course(self, mode: InitialSyncMode) -> tuple[CourseConfig, CourseSource]:
         source = CourseSource(
             provider="ed",

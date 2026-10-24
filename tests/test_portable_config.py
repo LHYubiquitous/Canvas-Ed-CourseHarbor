@@ -142,7 +142,7 @@ class PortablePackageTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         data = json.loads(result.stdout)
-        self.assertEqual(2, data["schema"])
+        self.assertEqual(3, data["schema"])
         self.assertEqual("default", data["profile"])
         self.assertTrue(data["canvas"])
         self.assertFalse(data["ed"])
@@ -177,7 +177,43 @@ class PortablePackageTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(
-            {"schema": 2, "launchers": True, "timezone": "Australia/Sydney"},
+            {"schema": 3, "launchers": True, "timezone": "Australia/Sydney"},
+            json.loads(result.stdout),
+        )
+
+    def test_schema_v2_migrates_sources_with_generation_zero(self) -> None:
+        result = self.run_package_code(
+            r"""
+            import json
+            import tempfile
+            from pathlib import Path
+            from canvas_ed_mcp.config import load_config
+
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                path = root / "config.toml"
+                path.write_text(
+                    'schema_version = 2\nprofile = "legacy"\noutput_root = "' +
+                    str(root / "Courses").replace('\\', '/') + '"\n' +
+                    '[platforms.canvas]\nenabled = true\n' +
+                    'base_url = "https://canvas.example.edu/api/v1"\n' +
+                    'credential = "env:SYNTHETIC_CANVAS_TOKEN"\n' +
+                    '[[courses]]\nkey = "COMP101"\nfolder = "COMP101"\n' +
+                    'confirmed_at = 2026-10-13T00:00:00Z\n' +
+                    '[[courses.sources]]\nprovider = "canvas"\n' +
+                    'instance = "canvas.example.edu"\ncourse_id = "101"\n',
+                    encoding="utf-8",
+                )
+                config = load_config(path)
+                print(json.dumps({
+                    "schema": config.schema_version,
+                    "generation": config.courses[0].sources[0].reconcile_generation,
+                }))
+            """
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            {"schema": 3, "generation": 0},
             json.loads(result.stdout),
         )
 

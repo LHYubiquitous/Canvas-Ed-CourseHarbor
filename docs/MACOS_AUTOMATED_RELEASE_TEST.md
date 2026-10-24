@@ -1,6 +1,6 @@
 # macOS Automated Release Test Matrix
 
-> Target: `canvas-ed-mcp 0.2.0rc12` on the repository owner's Mac and private branch
+> Target: `canvas-ed-mcp 0.2.0rc16` on the repository owner's Mac and private branch
 > `hy/phase-3-4-portability`. This matrix performs no real Canvas/Ed request,
 > course download, Git mutation, or publication.
 
@@ -29,20 +29,20 @@ different release so that lock/export semantics remain identical to the reviewed
 From the clean clone, run one command:
 
 ```zsh
-uv run --no-project --python 3.15 \
+uv run --no-project --python 3.14 \
   python -B ci/macos_release_matrix.py
 ```
 
-The default matrix may take a while. It creates isolated Python 3.10 and 3.15
+The default matrix may take a while. It creates isolated Python 3.10 and 3.14
 environments in a temporary directory and runs:
 
 1. clean-clone, private-file, Git ancestry, lockfile and version preflight;
 2. locked install, CLI/doctor, dependency validation, and the full synthetic suite
-   on Python 3.10 and 3.15;
+   on Python 3.10 and 3.14;
 3. wheel/sdist build, distribution audit, release-metadata audit, and two identical
    clean-source builds;
 4. clean installation of the exact wheel and audited source on both Python bounds,
-   plus exact sdist installation on Python 3.15;
+   plus exact sdist installation on Python 3.14;
 5. installed CLI and MCP stdio protocol smoke outside the checkout;
 6. a native macOS Keychain round-trip using a random synthetic value, with cleanup
    attempted in `finally` and verified before the stage passes.
@@ -67,14 +67,14 @@ payload, user-home path, or signed URL. `artifacts/` is ignored by Git.
 Preview the matrix on any operating system without changing anything:
 
 ```zsh
-uv run --no-project --python 3.15 \
+uv run --no-project --python 3.14 \
   python -B ci/macos_release_matrix.py --plan
 ```
 
 Use only local `uv` caches:
 
 ```zsh
-uv run --no-project --offline --python 3.15 \
+uv run --no-project --offline --python 3.14 \
   python -B ci/macos_release_matrix.py --offline
 ```
 
@@ -82,7 +82,7 @@ Skip Keychain only when the prompt cannot be handled. This intentionally produce
 `DEGRADED`, not `PASS`:
 
 ```zsh
-uv run --no-project --python 3.15 \
+uv run --no-project --python 3.14 \
   python -B ci/macos_release_matrix.py --skip-keychain
 ```
 
@@ -90,8 +90,8 @@ Override the Python matrix by repeating `--python`. For example, a diagnostic
 single-version run is:
 
 ```zsh
-uv run --no-project --python 3.15 \
-  python -B ci/macos_release_matrix.py --python 3.15
+uv run --no-project --python 3.14 \
+  python -B ci/macos_release_matrix.py --python 3.14
 ```
 
 ## 4. Manual boundary status

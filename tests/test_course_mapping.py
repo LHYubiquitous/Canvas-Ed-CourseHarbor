@@ -269,7 +269,7 @@ class CourseMappingTests(unittest.TestCase):
             "+ ed@ed.invalid id=ed-1 [initial=baseline_from_now]", plan.preview
         )
 
-    def test_moving_existing_source_between_logical_courses_requires_migration(self) -> None:
+    def test_moving_existing_source_requires_explicit_next_sync_mode(self) -> None:
         source = CourseSource(provider="canvas", instance="canvas.invalid", course_id="canvas-1")
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "Courses"
@@ -283,14 +283,14 @@ class CourseMappingTests(unittest.TestCase):
                 platforms=platforms(),
                 courses=(CourseConfig(key="two", folder="two", confirmed_at=NOW, sources=(source,)),),
             )
-            with self.assertRaisesRegex(ValueError, "migration"):
+            with self.assertRaisesRegex(ValueError, "next-sync mode"):
                 build_configure_plan(
                     current,
                     proposed,
                     new_source_modes={},
                 )
 
-    def test_detached_source_cannot_be_reattached_in_a_later_configure(self) -> None:
+    def test_detached_source_can_be_reattached_with_explicit_next_sync_mode(self) -> None:
         source = CourseSource(provider="canvas", instance="canvas.invalid", course_id="canvas-1")
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "Courses"
@@ -307,15 +307,17 @@ class CourseMappingTests(unittest.TestCase):
                 platforms=platforms(),
                 courses=(CourseConfig(key="two", folder="two", confirmed_at=NOW, sources=(source,)),),
             )
-            with self.assertRaisesRegex(ValueError, "migration"):
-                build_configure_plan(
-                    detach.config,
-                    proposed,
-                    new_source_modes={
-                        SourceIdentity("canvas", "canvas.invalid", "canvas-1"):
-                        InitialSyncMode.BASELINE_FROM_NOW
-                    },
-                )
+            plan = build_configure_plan(
+                detach.config,
+                proposed,
+                new_source_modes={
+                    SourceIdentity("canvas", "canvas.invalid", "canvas-1"):
+                    InitialSyncMode.BASELINE_FROM_NOW
+                },
+            )
+            restored = plan.config.courses[0].sources[0]
+            self.assertEqual(1, restored.reconcile_generation)
+            self.assertEqual((), plan.config.retired_sources)
 
     def test_instance_aliases_and_preview_control_characters_fail_closed(self) -> None:
         for invalid_instance in (

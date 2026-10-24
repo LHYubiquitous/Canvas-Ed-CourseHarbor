@@ -2,15 +2,15 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-[![Python 3.10–3.15](https://img.shields.io/badge/Python-3.10%E2%80%933.15-3776AB)](https://www.python.org/)
+[![Python 3.10–3.14](https://img.shields.io/badge/Python-3.10%E2%80%933.14-3776AB)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Canvas Ed MCP is a local desktop tool for students who use Canvas, Ed, or both. It
 downloads course material into folders you choose, creates weekly and semester due
 date reports, and provides read-only MCP access to configured courses.
 
-`0.2.0rc12` is the current source candidate. The latest published GitHub prerelease
-remains `0.2.0rc11` until the rc12 release gate and publication are complete. Reviewed
+`0.2.0rc16` is the current source candidate. The latest published GitHub prerelease
+remains `0.2.0rc12` until the rc16 release gate and publication are complete. Reviewed
 artifacts are available from the
 [Releases page](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases).
 The package is not published to PyPI.
@@ -19,7 +19,8 @@ The package is not published to PyPI.
 
 The installed package provides:
 
-- an English numbered terminal app and native Windows, macOS, and Linux launchers;
+- a PySide6 first-run and graphical course-reconfiguration UI, plus native Windows,
+  macOS, and Linux launchers;
 - incremental Canvas and Ed material sync with dry-run preview and no-clobber storage;
 - weekly TXT and semester Markdown due reports grouped in Sydney time;
 - separate profiles for different semesters, accounts, and output folders;
@@ -38,16 +39,16 @@ public source candidate, wheel, or sdist.
 
 ## 1. Install
 
-Download `canvas_ed_mcp-0.2.0rc12-py3-none-any.whl` from the rc12 release when it is
+Download `canvas_ed_mcp-0.2.0rc16-py3-none-any.whl` from the rc16 release when it is
 published, and place it in
-a new folder. Python 3.10–3.15 is supported. Keep this folder: generated launchers
+a new folder. Python 3.10–3.14 is supported. Keep this folder: generated launchers
 point to the virtual environment inside it.
 
 ### Windows PowerShell
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc12-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc16-py3-none-any.whl
 .\.venv\Scripts\canvas-ed-mcp.exe --version
 ```
 
@@ -62,7 +63,7 @@ Activate the environment with:
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc12-py3-none-any.whl
+./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc16-py3-none-any.whl
 source ./.venv/bin/activate
 canvas-ed-mcp --version
 ```
@@ -136,6 +137,26 @@ revocation, OAuth boundaries, and headless environment references.
 
 ## 3. Create your profile
 
+Install the optional PySide6 first-run UI from a source checkout with
+`python -m pip install ".[gui]"`, or install a wheel with its `gui` extra. Then start
+the real first-run host with:
+
+```text
+canvas-ed-setup
+```
+
+From a source checkout it can also be run as
+`python -m canvas_ed_mcp.ui.first_run_window`.
+
+It uses the actual profile path and read-only Canvas/Ed course discovery, then hands the
+real catalogues to the reviewed Select → Map → Folders → Review flow. Credential fields
+accept references such as `keyring:canvas-ed-mcp/default/canvas`; they never accept or
+display the token itself. The final confirmation creates only the new configuration—no
+course content, output folders, state, or launchers. After that save succeeds, the
+completion screen can explicitly install the daily-use shortcuts and open either the
+numbered daily menu or their folder. The first real sync remains a separate confirmed
+action. This installable entry point is not yet a signed or frozen desktop release.
+
 Preview a new Canvas, Ed, or combined profile:
 
 ```text
@@ -159,7 +180,20 @@ canvas-ed-mcp config validate PATH_PRINTED_BY_SETUP
 canvas-ed-mcp doctor --profile default --show-paths
 ```
 
-To add, remove, or change courses later, preview and then commit the configuration:
+To add, remove, remap, or change course settings later, open the graphical editor:
+
+```text
+canvas-ed-configure --profile default
+```
+
+The same editor opens from `configure_courses` and menu option 4. It starts with the
+saved courses selected and shows the exact config diff before saving. Existing folder
+names are read-only in this release. A mapping can be changed only when that source
+has no sync history and its current course folder is absent or empty; otherwise the
+UI explains why it is locked. Saving never moves or deletes files and never starts a
+sync.
+
+The terminal workflow remains available as a fallback:
 
 ```text
 canvas-ed-mcp configure --profile default --dry-run
@@ -176,13 +210,27 @@ menu, or use `course_material_sync`, `this_week_due`, and `this_semester_due` di
 Existing edited launchers are never overwritten; a changed managed replacement is
 written with a `.new` suffix for review.
 
+When the optional `gui` extra is installed, the first daily desktop dashboard can be
+opened with:
+
+```text
+canvas-ed-app --profile default
+```
+
+It shows the active profile, connected sources, local destination, and an asynchronous
+material-sync preview. Applying always requires confirmation and uses the exact reviewed
+plan; partial-provider warnings remain visible. Closing during work requests cooperative
+cancellation before the provider session is released. This is an additive preview: the
+generated `canvas_ed_app` launcher continues to open the tested terminal menu until the
+desktop packaging and owner-device release gates are complete.
+
 | Launcher | Result |
 |---|---|
 | `canvas_ed_app` | Opens the numbered menu |
 | `course_material_sync` | Updates every configured course |
 | `this_week_due` | Creates `Due Dates/this-week-due.txt` |
 | `this_semester_due` | Creates a teaching-week Markdown checklist |
-| `configure_courses` | Reviews course and policy changes |
+| `configure_courses` | Opens graphical course reconfiguration |
 | `health_check` | Shows package, profile, path, and keyring status |
 | `open_course_folder` | Opens the configured output folder |
 
@@ -199,9 +247,11 @@ canvas-ed-mcp sync --profile default --dry-run
 canvas-ed-mcp sync --profile default
 canvas-ed-mcp due week --profile default
 canvas-ed-mcp due semester --profile default
+canvas-ed-mcp configure-gui --profile default
 canvas-ed-mcp configure --profile default --dry-run
 canvas-ed-mcp launchers install --profile default
 canvas-ed-mcp open-course-folder --profile default
+canvas-ed-app --profile default
 ```
 
 Canvas and Ed due dates work from the confirmed course mappings. Optional Gradescope
@@ -266,7 +316,7 @@ Report software vulnerabilities through [SECURITY.md](SECURITY.md).
 ## Verification and release materials
 
 The project runs synthetic tests across Windows, macOS, and Linux for Python
-3.10–3.15. The release candidate also includes:
+3.10–3.14. The release candidate also includes:
 
 - `uv.lock` and the standard `pylock.toml` dependency lock;
 - `sbom.cdx.json`, a CycloneDX 1.5 software bill of materials;

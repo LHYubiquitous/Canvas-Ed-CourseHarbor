@@ -25,6 +25,7 @@ venv/
 ENV/
 env/
 .venv/
+.tmp-tests/
 
 # IDE
 .idea/

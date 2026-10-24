@@ -14,8 +14,9 @@ class CIWorkflowTests(unittest.TestCase):
 
         for runner in ("ubuntu-latest", "macos-latest", "windows-latest"):
             self.assertIn(runner, text)
-        for version in ("3.10", "3.11", "3.12", "3.13", "3.14", "3.15"):
+        for version in ("3.10", "3.11", "3.12", "3.13", "3.14"):
             self.assertIn(f'"{version}"', text)
+        self.assertNotIn('python: "3.15"', text)
         self.assertIn(
             "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6",
             text,
@@ -34,7 +35,7 @@ class CIWorkflowTests(unittest.TestCase):
         self.assertIn("ci/build_release_candidate.py", text)
         self.assertIn("uv run --locked --all-extras", text)
         self.assertNotIn("python -m build", text)
-        self.assertIn("unittest discover -s tests", text)
+        self.assertIn("python -B ci/run_release_tests.py", text)
         self.assertIn("ci/verify_distribution.py", text)
         self.assertIn("ci/verify_release_metadata.py", text)
         self.assertIn("ci/smoke_installed.py", text)
@@ -51,6 +52,7 @@ class CIWorkflowTests(unittest.TestCase):
         self.assertIn("Smoke-test clean-source MCP protocol", text)
         self.assertIn("uv lock --check", text)
         self.assertIn("canvas-ed-mcp", text)
+        self.assertIn("canvas-ed-configure --help", text)
         self.assertIn("course-sync", text)
         self.assertIn("ci/macos_release_matrix.py --plan", text)
         self.assertIn("contents: read", text)

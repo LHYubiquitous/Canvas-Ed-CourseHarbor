@@ -9,7 +9,7 @@
 
 ## 1. Supported runtime and installation
 
-Python 3.10–3.15 is the declared range. Use an isolated environment or `pipx`; do
+Python 3.10–3.14 is the declared range. Use an isolated environment or `pipx`; do
 not install as an administrator/root user. From a reviewed local checkout:
 
 ```text
@@ -139,7 +139,18 @@ Canvas catalog, material sync, and due reports. Linux owner-device keyring and
 desktop-launcher checks remain **NOT_RUN**.
 
 The portable sync path supports explicitly configured **Canvas and Ed** sources.
-For an existing profile, preview interactive changes before committing them:
+For an existing profile, use the graphical config-only editor:
+
+```text
+canvas-ed-configure --profile PROFILE
+```
+
+It preloads the current selection and mapping. Existing folders remain fixed. A
+source can be remapped only when no sync history exists and its current folder is
+absent or empty; the evidence is checked again at save time. The editor writes only
+the configuration and never moves, removes, or downloads course files.
+
+The terminal preview/commit workflow remains available:
 
 ```text
 canvas-ed-mcp configure --profile PROFILE --dry-run

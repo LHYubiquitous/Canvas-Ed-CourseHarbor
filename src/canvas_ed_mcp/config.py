@@ -23,7 +23,7 @@ from .initial import InitialSyncMode
 from .validation import validate_portable_component, validate_provider_instance
 
 
-CURRENT_CONFIG_SCHEMA = 2
+CURRENT_CONFIG_SCHEMA = 3
 _UNLIMITED_FILE_BYTES = "unlimited"
 _MIME_FILTER_RE = re.compile(
     r"[a-z0-9!#$&^_.+-]+/(?:[a-z0-9!#$&^_.+-]+|\*)\Z"
@@ -252,6 +252,7 @@ class CourseSource(StrictModel):
     name: str | None = None
     term: str | None = None
     initial_mode: InitialSyncMode = InitialSyncMode.BASELINE_FROM_NOW
+    reconcile_generation: int = 0
 
     @field_validator("instance", "course_id")
     @classmethod
@@ -263,6 +264,13 @@ class CourseSource(StrictModel):
             raise ValueError(f"{info.field_name} must be a safe canonical string")
         if info.field_name == "instance":
             validate_provider_instance(value)
+        return value
+
+    @field_validator("reconcile_generation")
+    @classmethod
+    def validate_reconcile_generation(cls, value: int) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("reconcile_generation must be a non-negative integer")
         return value
 
 
@@ -330,7 +338,7 @@ class CourseConfig(StrictModel):
 
 
 class AppConfig(StrictModel):
-    schema_version: Literal[2] = CURRENT_CONFIG_SCHEMA
+    schema_version: Literal[3] = CURRENT_CONFIG_SCHEMA
     profile: str = "default"
     output_root: Path
     platforms: PlatformsConfig = Field(default_factory=PlatformsConfig)
@@ -407,12 +415,36 @@ def _schema_version(data: dict[str, Any]) -> Any:
     return data.get("schema_version")
 
 
-def load_config(path: Path) -> AppConfig:
-    """Load one config; unknown/corrupt schemas fail closed."""
-    try:
-        raw = path.read_bytes()
-    except OSError as exc:
-        raise ConfigLoadError("unreadable", f"Cannot read config {path}: {exc}") from exc
+def _migrate_config_to_current(data: dict[str, Any], schema: int) -> None:
+    """Upgrade supported historical documents without changing runtime behavior."""
+    if schema == 1:
+        data.setdefault("daily_use", {})
+    if schema in {1, 2}:
+        courses = data.get("courses", ())
+        if isinstance(courses, list):
+            for course in courses:
+                if not isinstance(course, dict):
+                    continue
+                sources = course.get("sources", ())
+                if isinstance(sources, list):
+                    for source in sources:
+                        if isinstance(source, dict):
+                            source.setdefault("reconcile_generation", 0)
+        retired = data.get("retired_sources", ())
+        if isinstance(retired, list):
+            for item in retired:
+                if not isinstance(item, dict):
+                    continue
+                source = item.get("source")
+                if isinstance(source, dict):
+                    source.setdefault("reconcile_generation", 0)
+        data["schema_version"] = CURRENT_CONFIG_SCHEMA
+
+
+def load_config_bytes(raw: bytes) -> AppConfig:
+    """Validate one exact config byte snapshot; unknown/corrupt schemas fail closed."""
+    if not isinstance(raw, bytes):
+        raise TypeError("raw config must be bytes")
     try:
         data = tomllib.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
@@ -420,14 +452,12 @@ def load_config(path: Path) -> AppConfig:
     if not isinstance(data, dict):
         raise ConfigLoadError("invalid_shape", "Config root must be a TOML table")
     schema = _schema_version(data)
-    if schema not in {1, CURRENT_CONFIG_SCHEMA}:
+    if schema not in {1, 2, CURRENT_CONFIG_SCHEMA}:
         raise ConfigLoadError(
             "unsupported_schema",
             f"Unsupported config schema {_schema_version(data)!r}; expected {CURRENT_CONFIG_SCHEMA}",
         )
-    if schema == 1:
-        data["schema_version"] = CURRENT_CONFIG_SCHEMA
-        data.setdefault("daily_use", {})
+    _migrate_config_to_current(data, schema)
     courses = data.get("courses", ())
     if isinstance(courses, list):
         for course in courses:
@@ -443,6 +473,15 @@ def load_config(path: Path) -> AppConfig:
         return AppConfig.model_validate(data)
     except ValueError as exc:
         raise ConfigLoadError("invalid_config", f"Config validation failed: {exc}") from exc
+
+
+def load_config(path: Path) -> AppConfig:
+    """Load one config; unknown/corrupt schemas fail closed."""
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise ConfigLoadError("unreadable", f"Cannot read config {path}: {exc}") from exc
+    return load_config_bytes(raw)
 
 
 def _config_payload(config: AppConfig) -> dict[str, Any]:

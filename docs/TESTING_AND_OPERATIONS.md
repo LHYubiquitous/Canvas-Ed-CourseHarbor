@@ -1,8 +1,8 @@
 # 测试、部署与运行
 
-> 当前 GitHub prerelease 为 `v0.2.0rc11`；当前源码候选为 `v0.2.0rc12`。rc12 本地
-> automated release gate 与三系统 remote CI 已通过；owner-device 功能核验仍引用
-> rc9–rc11 的历史证据，不视为 rc12 重跑。实时发布状态以 public repository 的
+> 当前 GitHub prerelease 为 `v0.2.0rc12`；当前源码候选为 `v0.2.0rc16`。rc15 的
+> 最终 macOS release gate 为 `FAIL`；rc16 的三系统 remote CI 已在 product commit `4cacce8`
+> 通过，owner-device macOS 精确包复核仍为 `NOT_RUN`。旧版本证据仅作历史参考。实时发布状态以 public repository 的
 > GitHub Release 页面为准；PyPI 未授权、未执行。
 
 ## 验证层级
@@ -65,7 +65,7 @@ Windows owner-device 真实 Ed 与 Canvas content run 均为
 ## CI matrix（REMOTE VERIFIED）
 
 - OS：Ubuntu latest、Windows latest、macOS latest。
-- Python：Windows/macOS 跑 3.10 与 3.15 边界；Ubuntu 另跑 3.11—3.14，覆盖完整声明范围。
+- Python：Windows/macOS 跑 3.10 与 3.14 边界；Ubuntu 另跑 3.11—3.13，覆盖完整声明范围。
 - test jobs 安装 source、运行 full suite/CLI/pip check；build job 构建 wheel/sdist、执行 explicit manifest audit、安装 exact wheel，并在 checkout 外执行 CLI + MCP stdio smoke。
 - 合成 fixture 禁止含真实 course IDs、账号、token、学校私有 URL 或课程内容。
 - 真实 provider smoke 不在 fork PR 默认运行；只在受保护 secret/environment 下手动触发并脱敏。

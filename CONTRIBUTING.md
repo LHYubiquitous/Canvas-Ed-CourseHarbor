@@ -5,7 +5,7 @@ tokens and education data, so small, reviewable, synthetic changes are preferred
 
 ## Development setup
 
-Use Python 3.10–3.15 in an isolated environment:
+Use Python 3.10–3.14 in an isolated environment:
 
 ```text
 python -m venv .venv

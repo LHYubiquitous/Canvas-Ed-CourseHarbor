@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
   "version": 1,
-  "serialNumber": "urn:uuid:360b2c28-3e38-4d6d-8480-5d7d350927a1",
+  "serialNumber": "urn:uuid:9760eefe-cc4a-46dc-9c4f-232c2c328f01",
   "metadata": {
-    "timestamp": "2026-10-20T10:51:11.854699800Z",
+    "timestamp": "2026-10-23T12:28:56.862154500Z",
     "tools": [
       {
         "vendor": "Astral Software Inc.",
@@ -14,9 +14,9 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "canvas-ed-mcp-1@0.2.0rc12",
+      "bom-ref": "canvas-ed-mcp-1@0.2.0rc16",
       "name": "canvas-ed-mcp",
-      "version": "0.2.0rc12",
+      "version": "0.2.0rc16",
       "properties": [
         {
           "name": "uv:package:is_project_root",
@@ -382,35 +382,70 @@
     },
     {
       "type": "library",
-      "bom-ref": "pytest-44@9.1.1",
+      "bom-ref": "pyside6-44@6.12.0",
+      "name": "pyside6",
+      "version": "6.12.0",
+      "purl": "pkg:pypi/pyside6@6.12.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pyside6-addons-45@6.12.0",
+      "name": "pyside6-addons",
+      "version": "6.12.0",
+      "purl": "pkg:pypi/pyside6-addons@6.12.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pyside6-essentials-46@6.12.0",
+      "name": "pyside6-essentials",
+      "version": "6.12.0",
+      "purl": "pkg:pypi/pyside6-essentials@6.12.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pyside6-pdf-47@6.12.0.140",
+      "name": "pyside6-pdf",
+      "version": "6.12.0.140",
+      "purl": "pkg:pypi/pyside6-pdf@6.12.0.140"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pyside6-webengine-48@6.12.0.140",
+      "name": "pyside6-webengine",
+      "version": "6.12.0.140",
+      "purl": "pkg:pypi/pyside6-webengine@6.12.0.140"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pytest-49@9.1.1",
       "name": "pytest",
       "version": "9.1.1",
       "purl": "pkg:pypi/pytest@9.1.1"
     },
     {
       "type": "library",
-      "bom-ref": "python-dateutil-45@2.9.0.post0",
+      "bom-ref": "python-dateutil-50@2.9.0.post0",
       "name": "python-dateutil",
       "version": "2.9.0.post0",
       "purl": "pkg:pypi/python-dateutil@2.9.0.post0"
     },
     {
       "type": "library",
-      "bom-ref": "python-dotenv-46@1.2.4",
+      "bom-ref": "python-dotenv-51@1.2.4",
       "name": "python-dotenv",
       "version": "1.2.4",
       "purl": "pkg:pypi/python-dotenv@1.2.4"
     },
     {
       "type": "library",
-      "bom-ref": "python-multipart-47@0.0.32",
+      "bom-ref": "python-multipart-52@0.0.32",
       "name": "python-multipart",
       "version": "0.0.32",
       "purl": "pkg:pypi/python-multipart@0.0.32"
     },
     {
       "type": "library",
-      "bom-ref": "pywin32-48@312",
+      "bom-ref": "pywin32-53@312",
       "name": "pywin32",
       "version": "312",
       "purl": "pkg:pypi/pywin32@312",
@@ -423,7 +458,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "pywin32-ctypes-49@0.2.3",
+      "bom-ref": "pywin32-ctypes-54@0.2.3",
       "name": "pywin32-ctypes",
       "version": "0.2.3",
       "purl": "pkg:pypi/pywin32-ctypes@0.2.3",
@@ -436,28 +471,28 @@
     },
     {
       "type": "library",
-      "bom-ref": "referencing-50@0.37.0",
+      "bom-ref": "referencing-55@0.37.0",
       "name": "referencing",
       "version": "0.37.0",
       "purl": "pkg:pypi/referencing@0.37.0"
     },
     {
       "type": "library",
-      "bom-ref": "requests-51@2.34.2",
+      "bom-ref": "requests-56@2.34.2",
       "name": "requests",
       "version": "2.34.2",
       "purl": "pkg:pypi/requests@2.34.2"
     },
     {
       "type": "library",
-      "bom-ref": "requests-toolbelt-52@1.0.0",
+      "bom-ref": "requests-toolbelt-57@1.0.0",
       "name": "requests-toolbelt",
       "version": "1.0.0",
       "purl": "pkg:pypi/requests-toolbelt@1.0.0"
     },
     {
       "type": "library",
-      "bom-ref": "rpds-py-53@0.30.0",
+      "bom-ref": "rpds-py-58@0.30.0",
       "name": "rpds-py",
       "version": "0.30.0",
       "purl": "pkg:pypi/rpds-py@0.30.0",
@@ -470,7 +505,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "rpds-py-54@2026.9.1",
+      "bom-ref": "rpds-py-59@2026.9.1",
       "name": "rpds-py",
       "version": "2026.9.1",
       "purl": "pkg:pypi/rpds-py@2026.9.1",
@@ -483,7 +518,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "secretstorage-55@3.5.0",
+      "bom-ref": "secretstorage-60@3.5.0",
       "name": "secretstorage",
       "version": "3.5.0",
       "purl": "pkg:pypi/secretstorage@3.5.0",
@@ -496,14 +531,21 @@
     },
     {
       "type": "library",
-      "bom-ref": "six-56@1.17.0",
+      "bom-ref": "shiboken6-61@6.12.0",
+      "name": "shiboken6",
+      "version": "6.12.0",
+      "purl": "pkg:pypi/shiboken6@6.12.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "six-62@1.17.0",
       "name": "six",
       "version": "1.17.0",
       "purl": "pkg:pypi/six@1.17.0"
     },
     {
       "type": "library",
-      "bom-ref": "soupsieve-57@2.10",
+      "bom-ref": "soupsieve-63@2.10",
       "name": "soupsieve",
       "version": "2.10",
       "purl": "pkg:pypi/soupsieve@2.10",
@@ -516,7 +558,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "soupsieve-58@3.0.3",
+      "bom-ref": "soupsieve-64@3.0.3",
       "name": "soupsieve",
       "version": "3.0.3",
       "purl": "pkg:pypi/soupsieve@3.0.3",
@@ -529,14 +571,14 @@
     },
     {
       "type": "library",
-      "bom-ref": "sse-starlette-59@3.5.0",
+      "bom-ref": "sse-starlette-65@3.5.0",
       "name": "sse-starlette",
       "version": "3.5.0",
       "purl": "pkg:pypi/sse-starlette@3.5.0"
     },
     {
       "type": "library",
-      "bom-ref": "starlette-60@1.7.0",
+      "bom-ref": "starlette-66@1.7.0",
       "name": "starlette",
       "version": "1.7.0",
       "purl": "pkg:pypi/starlette@1.7.0",
@@ -549,7 +591,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "starlette-61@1.8.0",
+      "bom-ref": "starlette-67@1.8.0",
       "name": "starlette",
       "version": "1.8.0",
       "purl": "pkg:pypi/starlette@1.8.0",
@@ -562,7 +604,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "tomli-62@2.5.0",
+      "bom-ref": "tomli-68@2.5.0",
       "name": "tomli",
       "version": "2.5.0",
       "purl": "pkg:pypi/tomli@2.5.0",
@@ -575,42 +617,42 @@
     },
     {
       "type": "library",
-      "bom-ref": "tomli-w-63@1.2.0",
+      "bom-ref": "tomli-w-69@1.2.0",
       "name": "tomli-w",
       "version": "1.2.0",
       "purl": "pkg:pypi/tomli-w@1.2.0"
     },
     {
       "type": "library",
-      "bom-ref": "typing-extensions-64@4.16.0",
+      "bom-ref": "typing-extensions-70@4.16.0",
       "name": "typing-extensions",
       "version": "4.16.0",
       "purl": "pkg:pypi/typing-extensions@4.16.0"
     },
     {
       "type": "library",
-      "bom-ref": "typing-inspection-65@0.4.4",
+      "bom-ref": "typing-inspection-71@0.4.4",
       "name": "typing-inspection",
       "version": "0.4.4",
       "purl": "pkg:pypi/typing-inspection@0.4.4"
     },
     {
       "type": "library",
-      "bom-ref": "tzdata-66@2026.5",
+      "bom-ref": "tzdata-72@2026.5",
       "name": "tzdata",
       "version": "2026.5",
       "purl": "pkg:pypi/tzdata@2026.5"
     },
     {
       "type": "library",
-      "bom-ref": "urllib3-67@2.8.0",
+      "bom-ref": "urllib3-73@2.8.0",
       "name": "urllib3",
       "version": "2.8.0",
       "purl": "pkg:pypi/urllib3@2.8.0"
     },
     {
       "type": "library",
-      "bom-ref": "uvicorn-68@0.54.0",
+      "bom-ref": "uvicorn-74@0.54.0",
       "name": "uvicorn",
       "version": "0.54.0",
       "purl": "pkg:pypi/uvicorn@0.54.0",
@@ -623,7 +665,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "zipp-69@4.1.1",
+      "bom-ref": "zipp-75@4.1.1",
       "name": "zipp",
       "version": "4.1.1",
       "purl": "pkg:pypi/zipp@4.1.1",
@@ -647,7 +689,7 @@
       "dependsOn": [
         "exceptiongroup-14@1.3.1",
         "idna-21@3.20",
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
@@ -659,9 +701,9 @@
     {
       "ref": "beautifulsoup4-7@4.15.0",
       "dependsOn": [
-        "soupsieve-57@2.10",
-        "soupsieve-58@3.0.3",
-        "typing-extensions-64@4.16.0"
+        "soupsieve-63@2.10",
+        "soupsieve-64@3.0.3",
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
@@ -686,13 +728,13 @@
       "ref": "cryptography-13@50.0.2",
       "dependsOn": [
         "cffi-9@2.1.1",
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
       "ref": "exceptiongroup-14@1.3.1",
       "dependsOn": [
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
@@ -701,10 +743,10 @@
         "annotated-doc-2@0.0.5",
         "opentelemetry-api-33@1.45.1",
         "pydantic-39@2.14.1",
-        "starlette-60@1.7.0",
-        "starlette-61@1.8.0",
-        "typing-extensions-64@4.16.0",
-        "typing-inspection-65@0.4.4"
+        "starlette-66@1.7.0",
+        "starlette-67@1.8.0",
+        "typing-extensions-70@4.16.0",
+        "typing-inspection-71@0.4.4"
       ]
     },
     {
@@ -712,12 +754,12 @@
       "dependsOn": [
         "beautifulsoup4-7@4.15.0",
         "fastapi-15@0.143.0",
-        "pytest-44@9.1.1",
-        "python-dateutil-45@2.9.0.post0",
-        "python-dotenv-46@1.2.4",
-        "requests-51@2.34.2",
-        "requests-toolbelt-52@1.0.0",
-        "tzdata-66@2026.5"
+        "pytest-49@9.1.1",
+        "python-dateutil-50@2.9.0.post0",
+        "python-dotenv-51@1.2.4",
+        "requests-56@2.34.2",
+        "requests-toolbelt-57@1.0.0",
+        "tzdata-72@2026.5"
       ]
     },
     {
@@ -748,7 +790,7 @@
     {
       "ref": "importlib-metadata-22@9.0.1",
       "dependsOn": [
-        "zipp-69@4.1.1"
+        "zipp-75@4.1.1"
       ]
     },
     {
@@ -780,15 +822,15 @@
       "dependsOn": [
         "attrs-5@26.1.0",
         "jsonschema-specifications-29@2025.9.1",
-        "referencing-50@0.37.0",
-        "rpds-py-53@0.30.0",
-        "rpds-py-54@2026.9.1"
+        "referencing-55@0.37.0",
+        "rpds-py-58@0.30.0",
+        "rpds-py-59@2026.9.1"
       ]
     },
     {
       "ref": "jsonschema-specifications-29@2025.9.1",
       "dependsOn": [
-        "referencing-50@0.37.0"
+        "referencing-55@0.37.0"
       ]
     },
     {
@@ -799,8 +841,8 @@
         "jaraco-context-25@6.1.2",
         "jaraco-functools-26@4.6.0",
         "jeepney-27@0.9.0",
-        "pywin32-ctypes-49@0.2.3",
-        "secretstorage-55@3.5.0"
+        "pywin32-ctypes-54@0.2.3",
+        "secretstorage-60@3.5.0"
       ]
     },
     {
@@ -813,14 +855,14 @@
         "pydantic-39@2.14.1",
         "pydantic-settings-41@2.15.0",
         "pyjwt-43@2.15.1",
-        "python-multipart-47@0.0.32",
-        "pywin32-48@312",
-        "sse-starlette-59@3.5.0",
-        "starlette-60@1.7.0",
-        "starlette-61@1.8.0",
-        "typing-extensions-64@4.16.0",
-        "typing-inspection-65@0.4.4",
-        "uvicorn-68@0.54.0"
+        "python-multipart-52@0.0.32",
+        "pywin32-53@312",
+        "sse-starlette-65@3.5.0",
+        "starlette-66@1.7.0",
+        "starlette-67@1.8.0",
+        "typing-extensions-70@4.16.0",
+        "typing-inspection-71@0.4.4",
+        "uvicorn-74@0.54.0"
       ]
     },
     {
@@ -829,7 +871,7 @@
     {
       "ref": "opentelemetry-api-33@1.45.1",
       "dependsOn": [
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
@@ -852,22 +894,22 @@
       "dependsOn": [
         "annotated-types-3@0.8.0",
         "pydantic-core-40@2.50.1",
-        "typing-extensions-64@4.16.0",
-        "typing-inspection-65@0.4.4"
+        "typing-extensions-70@4.16.0",
+        "typing-inspection-71@0.4.4"
       ]
     },
     {
       "ref": "pydantic-core-40@2.50.1",
       "dependsOn": [
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
       "ref": "pydantic-settings-41@2.15.0",
       "dependsOn": [
         "pydantic-39@2.14.1",
-        "python-dotenv-46@1.2.4",
-        "typing-inspection-65@0.4.4"
+        "python-dotenv-51@1.2.4",
+        "typing-inspection-71@0.4.4"
       ]
     },
     {
@@ -877,11 +919,45 @@
       "ref": "pyjwt-43@2.15.1",
       "dependsOn": [
         "cryptography-13@50.0.2",
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
-      "ref": "pytest-44@9.1.1",
+      "ref": "pyside6-44@6.12.0",
+      "dependsOn": [
+        "pyside6-addons-45@6.12.0",
+        "pyside6-essentials-46@6.12.0",
+        "pyside6-pdf-47@6.12.0.140",
+        "pyside6-webengine-48@6.12.0.140",
+        "tomli-68@2.5.0"
+      ]
+    },
+    {
+      "ref": "pyside6-addons-45@6.12.0",
+      "dependsOn": [
+        "pyside6-essentials-46@6.12.0"
+      ]
+    },
+    {
+      "ref": "pyside6-essentials-46@6.12.0",
+      "dependsOn": [
+        "shiboken6-61@6.12.0"
+      ]
+    },
+    {
+      "ref": "pyside6-pdf-47@6.12.0.140",
+      "dependsOn": [
+        "pyside6-essentials-46@6.12.0"
+      ]
+    },
+    {
+      "ref": "pyside6-webengine-48@6.12.0.140",
+      "dependsOn": [
+        "pyside6-addons-45@6.12.0"
+      ]
+    },
+    {
+      "ref": "pytest-49@9.1.1",
       "dependsOn": [
         "colorama-12@0.4.6",
         "exceptiongroup-14@1.3.1",
@@ -889,126 +965,129 @@
         "packaging-34@26.3",
         "pluggy-37@1.6.0",
         "pygments-42@2.21.0",
-        "tomli-62@2.5.0"
+        "tomli-68@2.5.0"
       ]
     },
     {
-      "ref": "python-dateutil-45@2.9.0.post0",
+      "ref": "python-dateutil-50@2.9.0.post0",
       "dependsOn": [
-        "six-56@1.17.0"
+        "six-62@1.17.0"
       ]
     },
     {
-      "ref": "python-dotenv-46@1.2.4"
+      "ref": "python-dotenv-51@1.2.4"
     },
     {
-      "ref": "python-multipart-47@0.0.32"
+      "ref": "python-multipart-52@0.0.32"
     },
     {
-      "ref": "pywin32-48@312"
+      "ref": "pywin32-53@312"
     },
     {
-      "ref": "pywin32-ctypes-49@0.2.3"
+      "ref": "pywin32-ctypes-54@0.2.3"
     },
     {
-      "ref": "referencing-50@0.37.0",
+      "ref": "referencing-55@0.37.0",
       "dependsOn": [
         "attrs-5@26.1.0",
-        "rpds-py-53@0.30.0",
-        "rpds-py-54@2026.9.1",
-        "typing-extensions-64@4.16.0"
+        "rpds-py-58@0.30.0",
+        "rpds-py-59@2026.9.1",
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
-      "ref": "requests-51@2.34.2",
+      "ref": "requests-56@2.34.2",
       "dependsOn": [
         "certifi-8@2026.7.22",
         "charset-normalizer-10@3.5.2",
         "idna-21@3.20",
-        "urllib3-67@2.8.0"
+        "urllib3-73@2.8.0"
       ]
     },
     {
-      "ref": "requests-toolbelt-52@1.0.0",
+      "ref": "requests-toolbelt-57@1.0.0",
       "dependsOn": [
-        "requests-51@2.34.2"
+        "requests-56@2.34.2"
       ]
     },
     {
-      "ref": "rpds-py-53@0.30.0"
+      "ref": "rpds-py-58@0.30.0"
     },
     {
-      "ref": "rpds-py-54@2026.9.1"
+      "ref": "rpds-py-59@2026.9.1"
     },
     {
-      "ref": "secretstorage-55@3.5.0",
+      "ref": "secretstorage-60@3.5.0",
       "dependsOn": [
         "cryptography-13@50.0.2",
         "jeepney-27@0.9.0"
       ]
     },
     {
-      "ref": "six-56@1.17.0"
+      "ref": "shiboken6-61@6.12.0"
     },
     {
-      "ref": "soupsieve-57@2.10"
+      "ref": "six-62@1.17.0"
     },
     {
-      "ref": "soupsieve-58@3.0.3"
+      "ref": "soupsieve-63@2.10"
     },
     {
-      "ref": "sse-starlette-59@3.5.0",
+      "ref": "soupsieve-64@3.0.3"
+    },
+    {
+      "ref": "sse-starlette-65@3.5.0",
       "dependsOn": [
         "anyio-4@4.15.1",
-        "starlette-60@1.7.0",
-        "starlette-61@1.8.0"
+        "starlette-66@1.7.0",
+        "starlette-67@1.8.0"
       ]
     },
     {
-      "ref": "starlette-60@1.7.0",
+      "ref": "starlette-66@1.7.0",
       "dependsOn": [
         "anyio-4@4.15.1",
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
-      "ref": "starlette-61@1.8.0",
+      "ref": "starlette-67@1.8.0",
       "dependsOn": [
         "anyio-4@4.15.1",
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
-      "ref": "tomli-62@2.5.0"
+      "ref": "tomli-68@2.5.0"
     },
     {
-      "ref": "tomli-w-63@1.2.0"
+      "ref": "tomli-w-69@1.2.0"
     },
     {
-      "ref": "typing-extensions-64@4.16.0"
+      "ref": "typing-extensions-70@4.16.0"
     },
     {
-      "ref": "typing-inspection-65@0.4.4",
+      "ref": "typing-inspection-71@0.4.4",
       "dependsOn": [
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
-      "ref": "tzdata-66@2026.5"
+      "ref": "tzdata-72@2026.5"
     },
     {
-      "ref": "urllib3-67@2.8.0"
+      "ref": "urllib3-73@2.8.0"
     },
     {
-      "ref": "uvicorn-68@0.54.0",
+      "ref": "uvicorn-74@0.54.0",
       "dependsOn": [
         "click-11@8.5.0",
         "h11-17@0.16.0",
-        "typing-extensions-64@4.16.0"
+        "typing-extensions-70@4.16.0"
       ]
     },
     {
-      "ref": "zipp-69@4.1.1"
+      "ref": "zipp-75@4.1.1"
     }
   ]
 }

@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "canvas-ed-mcp"
-version = "0.2.0rc12"
+version = "0.2.0rc16"
 description = "Portable, local-first Canvas and Ed course sync with an MCP server"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "canvas-ed-mcp contributors" }]
@@ -21,7 +21,6 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
-  "Programming Language :: Python :: 3.15",
 ]
 dependencies = [
   "beautifulsoup4>=4.12.0",
@@ -37,6 +36,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gradescope = ["gradescopeapi>=1.8.1"]
+gui = ["PySide6>=6.8,<7"]
 test = []
 
 [dependency-groups]
@@ -53,6 +53,9 @@ Upstream = "https://github.com/r1ckyIn/canvas-ed-mcp"
 
 [project.scripts]
 canvas-ed-mcp = "canvas_ed_mcp.cli:main"
+canvas-ed-app = "canvas_ed_mcp.ui.daily_dashboard:main"
+canvas-ed-setup = "canvas_ed_mcp.ui.first_run_window:main"
+canvas-ed-configure = "canvas_ed_mcp.cli:configure_gui_main"
 course-sync = "canvas_ed_mcp.cli:course_sync_main"
 
 [tool.setuptools]

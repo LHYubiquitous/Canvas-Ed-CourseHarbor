@@ -24,6 +24,7 @@ from canvas_ed_mcp.config import (
     DownloadPolicy,
     EdPlatformConfig,
     PlatformsConfig,
+    RetiredCourseSource,
     load_config,
     save_config,
 )
@@ -36,6 +37,7 @@ from canvas_ed_mcp.configure_flow import (
     run_configure_wizard,
 )
 from canvas_ed_mcp.providers.base import CourseCandidate
+from canvas_ed_mcp.course_mapping import SourceIdentity
 from canvas_ed_mcp.cli import main
 
 
@@ -229,6 +231,92 @@ class ConfigurePlanningTests(unittest.TestCase):
             for proposed in cases:
                 with self.subTest(proposed=proposed), self.assertRaises(ValueError):
                     build_configure_plan(current, proposed, new_course_modes={})
+
+    def test_existing_source_move_requires_one_time_next_sync_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "Courses"
+            existing = course("101")
+            current = config(output, (existing,))
+            moved = existing.model_copy(update={"key": "COMP101-2026-S2"})
+            proposed = config(output, (moved,))
+            identity = SourceIdentity.from_source(existing.sources[0])
+
+            with self.assertRaisesRegex(ValueError, "next-sync mode"):
+                build_configure_plan(current, proposed, new_source_modes={})
+
+            plan = build_configure_plan(
+                current,
+                proposed,
+                new_source_modes={identity: InitialSyncMode.IMPORT_ALL},
+            )
+
+        self.assertEqual(
+            (ConfigureChangeKind.ADD, ConfigureChangeKind.REMOVE),
+            tuple(change.kind for change in plan.changes),
+        )
+        self.assertEqual(1, len(plan.initial_sync))
+        moved_source = plan.config.courses[0].sources[0]
+        self.assertEqual(InitialSyncMode.IMPORT_ALL, moved_source.initial_mode)
+        self.assertEqual(1, moved_source.reconcile_generation)
+
+    def test_existing_source_mode_change_increments_generation_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "Courses"
+            existing = course("101")
+            identity = SourceIdentity.from_source(existing.sources[0])
+            proposed_source = existing.sources[0].model_copy(
+                update={"initial_mode": InitialSyncMode.IMPORT_ALL}
+            )
+            proposed = config(
+                output,
+                (existing.model_copy(update={"sources": (proposed_source,)}),),
+            )
+
+            plan = build_configure_plan(
+                config(output, (existing,)),
+                proposed,
+                new_source_modes={identity: InitialSyncMode.IMPORT_ALL},
+            )
+
+        updated = plan.config.courses[0].sources[0]
+        self.assertEqual(InitialSyncMode.IMPORT_ALL, updated.initial_mode)
+        self.assertEqual(1, updated.reconcile_generation)
+        self.assertIn("one-time, then incremental", plan.preview)
+
+    def test_reactivate_inactive_source_requires_explicit_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "Courses"
+            inactive_course = course("101")
+            inactive_source = inactive_course.sources[0].model_copy(
+                update={"reconcile_generation": 4}
+            )
+            current = config(output, ()).model_copy(
+                update={
+                    "retired_sources": (
+                        RetiredCourseSource(
+                            source=inactive_source,
+                            former_course_key=inactive_course.key,
+                        ),
+                    )
+                }
+            )
+            restored_course = inactive_course.model_copy(
+                update={"sources": (inactive_source,)}
+            )
+            proposed = config(output, (restored_course,))
+            identity = SourceIdentity.from_source(inactive_source)
+
+            with self.assertRaisesRegex(ValueError, "next-sync mode"):
+                build_configure_plan(current, proposed, new_source_modes={})
+            plan = build_configure_plan(
+                current,
+                proposed,
+                new_source_modes={identity: InitialSyncMode.BASELINE_FROM_NOW},
+            )
+
+        restored = plan.config.courses[0].sources[0]
+        self.assertEqual(5, restored.reconcile_generation)
+        self.assertEqual((), plan.config.retired_sources)
 
     def test_change_records_are_immutable_and_well_formed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

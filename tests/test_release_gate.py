@@ -52,7 +52,7 @@ class ReleaseGateTests(unittest.TestCase):
         version_match = re.search(r'^__version__ = "([^"]+)"$', package_init, re.MULTILINE)
         self.assertIsNotNone(version_match)
         version = project["project"]["version"]
-        self.assertEqual("0.2.0rc12", version)
+        self.assertEqual("0.2.0rc16", version)
         self.assertEqual(version, version_match.group(1))
         development_dependencies = project["dependency-groups"]["dev"]
         runtime_dependencies = project["project"]["dependencies"]
@@ -113,6 +113,12 @@ class ReleaseGateTests(unittest.TestCase):
             "docs/ED_SYNC_MANUAL_TEST.md",
             "tests/test_mcp_config.py",
             "tests/test_sync_output.py",
+            "tests/test_ui_spike_fixture.py",
+            "tests/test_ui_spike_presenter.py",
+            "tests/test_ui_spike_pyside6_adapter.py",
+            "tests/test_ui_spike_runner.py",
+            "tests/test_ui_spike_tkinter_adapter.py",
+            "tests/test_ui_spike_wx_adapter.py",
         ):
             self.assertNotIn(private, selected)
 

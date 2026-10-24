@@ -59,6 +59,12 @@ _EXCLUDED_PUBLIC_FILES = frozenset(
         "docs/ED_SYNC_MANUAL_TEST.md",
         "tests/test_mcp_config.py",
         "tests/test_sync_output.py",
+        "tests/test_ui_spike_fixture.py",
+        "tests/test_ui_spike_presenter.py",
+        "tests/test_ui_spike_pyside6_adapter.py",
+        "tests/test_ui_spike_runner.py",
+        "tests/test_ui_spike_tkinter_adapter.py",
+        "tests/test_ui_spike_wx_adapter.py",
     }
 )
 _PRIVATE_KEY_RE = re.compile(
