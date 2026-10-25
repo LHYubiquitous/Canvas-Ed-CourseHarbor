@@ -2,14 +2,15 @@
 
 ## 0.2.0rc17 release gate
 
-Status: **PASS — PRIVATE GITHUB PRERELEASE PUBLISHED**
+Status: **PASS — PUBLIC AND PRIVATE GITHUB PRERELEASES PUBLISHED**
 Audit date: 2026-10-26
 
 `0.2.0rc17` introduces the CourseHarbor App Shell, graphical Canvas/Ed credential
 workflow, independent due-date views/exports, per-course sync reports and folders,
 profile lifecycle, faster read-only material preview, and the first self-contained
-Windows onedir candidate. The public `v0.2.0rc16` release remains immutable; this rc17
-release is confined to the private `Canvas-Ed-CourseHarbor` repository.
+Windows onedir candidate. The public `v0.2.0rc16` release remains immutable. The rc17
+runtime artifacts are published unchanged in both repositories; the public tag is built
+from the audited clean-source history rather than the private development history.
 
 | Gate | rc17 result |
 |---|---|
@@ -21,7 +22,7 @@ release is confined to the private `Canvas-Ed-CourseHarbor` repository.
 | Windows relocation smoke | `PASS`: GUI and CLI exited 0 from a copied directory outside the repository |
 | Windows visible frozen App Shell | `PASS`: owner confirmed all requested visible routes behaved normally on 2026-10-26 |
 | Application icon assets | `PASS`: runtime PNG, seven-size Windows ICO, and ten-file macOS iconset validated |
-| GitHub tag/prerelease | `PASS`: private `v0.2.0rc17` prerelease in `LHYubiquitous/Canvas-Ed-CourseHarbor` |
+| GitHub tag/prerelease | `PASS`: private tag `6bf1770`; public clean-source tag `0f59b28` in `LHYubiquitous/Canvas-Ed-CourseHarbor` |
 | macOS `.app`/DMG, signing and notarization | `NOT_RUN`: follows this Windows-first release |
 | Windows/macOS signing, installer upgrade/uninstall | `NOT_RUN` |
 | PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
@@ -50,8 +51,8 @@ macOS runner without the rc15 quote corruption.
 | Exact wheel build and distribution audit | `PASS`: private CI deterministic build/audit/install job |
 | macOS exact-wheel automated and human label gate | `PASS`: macOS 26.5.2 arm64, Python 3.14.8, exact wheel SHA-256 `3dc625712651d37661a8e3d19ea9debd3d4212ba47dc9359c290ea1d36e35dec` |
 | macOS real local Apply | `NOT_RUN`: not required for this presentation-only repair |
-| Remote Windows/macOS/Linux CI | `PASS`: private release-gate [run 40104529592](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/40104529592), private final HEAD [run 40104851327](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/40104851327), and public release-source [run 40106666647](https://github.com/LHYubiquitous/canvas-ed-mcp-public/actions/runs/40106666647) |
-| GitHub tag/prerelease | `PASS`: [v0.2.0rc16](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc16), tag target `620b6776fe06d92b3d188f70937afa28c5a03237` |
+| Remote Windows/macOS/Linux CI | `PASS`: private release-gate [run 40104529592](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private/actions/runs/40104529592), private final HEAD [run 40104851327](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private/actions/runs/40104851327), and public release-source [run 40106666647](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/40106666647) |
+| GitHub tag/prerelease | `PASS`: [v0.2.0rc16](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc16), tag target `620b6776fe06d92b3d188f70937afa28c5a03237` |
 | PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
 
 An earlier documentation-only head exposed a nondeterministic Windows/Python 3.14
@@ -176,7 +177,7 @@ already been rerun on those devices.
 | Locked pylock/SBOM audit | `PASS` with reviewed `uv 0.11.28` |
 | Deterministic wheel, sdist, clean-source packet | `PASS`: 42 / 99 / 127 entries |
 | Windows/macOS real behavior | Historical rc9–rc11 evidence only; rc12 rerun `NOT_RUN` |
-| Remote Windows/macOS/Linux CI | `PASS` at commit `7340b14`; [workflow run 39411378014](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/39411378014) |
+| Remote Windows/macOS/Linux CI | `PASS` at commit `7340b14`; [workflow run 39411378014](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private/actions/runs/39411378014) |
 | GitHub tag/prerelease | `NOT_RUN` |
 | PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
 
@@ -186,7 +187,7 @@ Status: **AUTOMATED RELEASE GATE PASSED**
 Audit date: 2026-10-20
 
 This section is the immutable build-time evidence snapshot. The public
-[GitHub Release](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc11)
+[GitHub Release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc11)
 is the authoritative publication record; PyPI publication is outside this release.
 
 `0.2.0rc11` is a documentation and package-metadata successor to the owner-tested

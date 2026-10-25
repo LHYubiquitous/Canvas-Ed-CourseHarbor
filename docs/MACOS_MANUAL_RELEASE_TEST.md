@@ -18,7 +18,7 @@ Use a new clean clone of the private repository for Sections 2–6. Do not repla
 clean, reset, or reuse the existing daily-working checkout because it may contain
 ignored credentials, state, course output, or uncommitted work.
 
-- Private repository: `https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor.git`
+- Private repository: `https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private.git`
 - Branch: `hy/phase-3-4-portability`
 - Verified baseline ancestor: `c305be28882dcedb3f93fd197a9218746c4d05d2`
 - Expected package version: `0.2.0rc16`
@@ -43,7 +43,7 @@ Run in Terminal. Choose a new directory that does not already exist:
 mkdir -p ~/Developer
 cd ~/Developer
 git clone --branch hy/phase-3-4-portability --single-branch \
-  https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor.git canvas-ed-mcp-rc-test
+  https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private.git canvas-ed-mcp-rc-test
 cd canvas-ed-mcp-rc-test
 git status --short
 git rev-parse HEAD

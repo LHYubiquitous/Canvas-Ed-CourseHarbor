@@ -101,7 +101,7 @@ back to browser cookies, passwords, query-string tokens, or a plaintext keyring.
 
 ## 5. Desktop save, test, and replacement lifecycle
 
-The unreleased source candidate adds masked token entry to `canvas-ed-setup`. The UI
+`v0.2.0rc17` adds masked token entry to `canvas-ed-setup`. The UI
 passes a short-lived secret to an application-layer credential controller; Qt never
 calls the low-level keyring write API directly. The controller checks native keyring
 readiness before provider traffic, tests only the selected provider with a read-only

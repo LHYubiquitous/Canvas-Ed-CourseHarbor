@@ -24,14 +24,14 @@ class CrossPlatformDocumentationTests(unittest.TestCase):
         self.assertEqual(sorted(positions), positions)
 
         for required in (
-            "canvas_ed_mcp-0.2.0rc16-py3-none-any.whl",
+            "canvas_ed_mcp-0.2.0rc17-py3-none-any.whl",
             "python -m keyring set canvas-ed-mcp/default canvas",
             "canvas-ed-mcp setup --profile default --dry-run",
             "course_material_sync",
             "this_week_due",
             "this_semester_due",
             "canvas-ed-mcp serve --profile default",
-            "https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases",
+            "https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases",
             "https://edstem.org/au/settings/api-tokens",
             "Account → Settings",
         ):
