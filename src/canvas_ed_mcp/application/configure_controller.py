@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Mapping
 
 from ..config import AppConfig, CourseSource, PlatformsConfig
@@ -310,6 +311,24 @@ class ConfigureController(SetupController):
                     "Existing folder names are fixed in this version; changing them requires file migration."
                 )
         super().set_folder_overrides(folders)
+
+    @property
+    def output_root_editable(self) -> bool:
+        return False
+
+    def set_output_root(self, output_root: Path) -> bool:
+        if not isinstance(output_root, Path) or not output_root.is_absolute():
+            raise ValueError("library root must be an absolute Path")
+        try:
+            selected = output_root.resolve(strict=False)
+            current = self.current.output_root.resolve(strict=False)
+        except (OSError, RuntimeError):
+            raise ValueError("library root could not be resolved safely") from None
+        if selected == current:
+            return False
+        raise ValueError(
+            "The existing library root is fixed; changing it requires a separate file migration."
+        )
 
     def build_review(self) -> SetupReview:
         setup_review = super().build_review()

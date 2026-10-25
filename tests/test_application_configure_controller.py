@@ -78,6 +78,21 @@ def fixture(root: Path, *, allowed: bool) -> tuple[AppConfig, dict[str, tuple[Co
 
 
 class ConfigureControllerTests(unittest.TestCase):
+    def test_existing_library_root_is_read_only_at_controller_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            current, catalogs, eligibility = fixture(
+                (Path(temporary) / "Courses").resolve(), allowed=True
+            )
+            controller = ConfigureController(
+                current=current, catalogs=catalogs, eligibility=eligibility
+            )
+
+            self.assertFalse(controller.output_root_editable)
+            self.assertFalse(controller.set_output_root(current.output_root))
+            with self.assertRaisesRegex(ValueError, "library root is fixed"):
+                controller.set_output_root((Path(temporary) / "Other").resolve())
+            self.assertEqual(current.output_root, controller.output_root)
+
     def test_all_courses_can_be_deactivated_and_later_one_can_be_reactivated(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = (Path(temporary) / "Courses").resolve()

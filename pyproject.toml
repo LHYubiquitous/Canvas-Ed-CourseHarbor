@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "canvas-ed-mcp"
-version = "0.2.0rc16"
-description = "Portable, local-first Canvas and Ed course sync with an MCP server"
+version = "0.2.0rc17"
+description = "CourseHarbor: a local-first course library for Canvas and Ed"
 readme = "README.md"
 requires-python = ">=3.10,<3.15"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "canvas-ed-mcp contributors" }]
+authors = [{ name = "CourseHarbor contributors" }]
 keywords = ["canvas", "ed-discussion", "mcp", "education"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -42,27 +42,34 @@ test = []
 [dependency-groups]
 dev = [
   "build>=1,<2",
+  "pyinstaller==6.22.3",
   "setuptools>=77",
   "wheel",
 ]
 
 [project.urls]
-Homepage = "https://github.com/LHYubiquitous/canvas-ed-mcp-public"
-Issues = "https://github.com/LHYubiquitous/canvas-ed-mcp-public/issues"
+Homepage = "https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor"
+Issues = "https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/issues"
 Upstream = "https://github.com/r1ckyIn/canvas-ed-mcp"
 
 [project.scripts]
 canvas-ed-mcp = "canvas_ed_mcp.cli:main"
-canvas-ed-app = "canvas_ed_mcp.ui.daily_dashboard:main"
+canvas-ed-app = "canvas_ed_mcp.ui.app_shell:main"
 canvas-ed-setup = "canvas_ed_mcp.ui.first_run_window:main"
 canvas-ed-configure = "canvas_ed_mcp.cli:configure_gui_main"
 course-sync = "canvas_ed_mcp.cli:course_sync_main"
+
+[project.gui-scripts]
+courseharbor = "canvas_ed_mcp.ui.app_shell:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"canvas_ed_mcp.ui" = ["assets/*.png"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["*.pyc", "__pycache__/*"]

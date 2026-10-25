@@ -3,6 +3,102 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
+## [0.2.0rc17] - 2026-10-26
+
+### Graphical credential onboarding
+
+- Adds an application-layer typed credential controller for deterministic Canvas/Ed
+  keyring targets, native-store readiness, provider-isolated read-only validation,
+  explicit replacement, cancellation boundaries, and sanitized results.
+- Changes first-run onboarding from terminal command copying to masked **Save and
+  test** and **Test existing** actions. Tokens are cleared from the widget before
+  background work and never enter config, status text, clipboard, argv, or Qt models.
+- Uses validate-before-persist so invalid credentials, provider/network failures, and
+  cancellation before keyring write leave an existing credential unchanged.
+- Separates the Canvas/Ed provider cards from the tab bar and renders enabled providers
+  with an explicit checked indicator instead of a color-only solid square.
+- Generalizes Canvas documentation around each institution's host and labels non-AU
+  Ed regional token pages as `NOT_RUN` instead of inferring support.
+
+### Desktop workflow integration
+
+- Adopts **CourseHarbor** as the display brand and names the repository
+  `Canvas-Ed-CourseHarbor`, while retaining package, CLI, keyring, profile, state, and
+  launcher identifiers for upgrade compatibility.
+- Replaces the Dashboard's fixed dark sidebar with the compact Setup visual language;
+  warning results are aggregated into reusable, collapsed notices that can be expanded
+  or dismissed, leaving the course table as the primary workspace.
+- Adds the unified CourseHarbor App Shell routes for Library, Due dates, Courses,
+  Connections, Health & About, and Open local library.
+- Adds a local-only startup planner and Profile chooser: zero profiles enters First run,
+  one healthy profile opens directly, and multiple or damaged profiles remain visible
+  without provider traffic or credential resolution. The App Shell can return through
+  **Switch profile** after active work reaches a safe cancellation boundary.
+- Keeps `First run → course selection → Save configuration → Open daily dashboard` in
+  the same CourseHarbor process. Closing course selection also closes its hidden
+  First-run host, while standalone setup retains the detached-launch recovery path.
+- Returns an abandoned First Run wizard or embedded course-selection flow to the
+  refreshed Profile chooser instead of terminating the whole app. Adds reviewed
+  **Remove profile…**: the selected
+  config is revision-checked and moved to a recoverable local archive, while course
+  files, credentials, sync state, logs/cache, and remote tokens remain untouched.
+- Adds the installed `courseharbor` GUI entry point while retaining `canvas-ed-app` and
+  explicit `--profile` compatibility. A frozen executable/installer remains `NOT_RUN`.
+- Splits due-date work into independent This week and Semester load/export workflows,
+  each with its own destination and explicit publish action.
+- Adds a profile-local, non-secret sync-report history. Courses expands each configured
+  course into timestamped apply runs and changed-file destinations while keeping the
+  complete course folder visible.
+- Reduces Canvas preview request amplification by requesting inline Module items and
+  reusing the Course Files index, while fetching only module-linked Page bodies with a
+  bounded pool. Independent course sources discover concurrently in configuration order;
+  apply remains serial. On the Windows owner profile used for this candidate, the same
+  ten-source read-only preview improved from about 54.5 seconds to 17.2 seconds.
+- Records the existing-profile Windows App Shell, independent due workflows, course
+  report expansion, and navigation as owner-device `PASS` on 2026-10-25. Frozen-package
+  startup, macOS rc17 behavior, signing, upgrade, and uninstall remain `NOT_RUN`.
+- Adds the first PyInstaller 6.22.3 onedir release candidate with separate windowed
+  `CourseHarbor.exe` and console `courseharbor-cli.exe` companions. The build isolates
+  dependency discovery from host tool paths, audits PE subsystems, Qt plugins, private
+  material, and embedded machine paths, and preserves source/frozen launcher behavior.
+- Records automated Windows owner-device bundle and relocation smoke as `PASS` on
+  2026-10-26, including QtCore import, Windows Credential Manager backend readiness,
+  CLI help, and no-console GUI startup. Full visible frozen-app use, installer, signing,
+  upgrade/uninstall, and macOS packaging remain `NOT_RUN`.
+- Records the owner-confirmed visible frozen Windows App Shell journey as `PASS` on
+  2026-10-26. This version is published only as a private GitHub prerelease; PyPI,
+  signing, installer, auto-update, and macOS DMG publication remain `NOT_RUN`.
+- Adds an original CourseHarbor application icon across source UI, Windows executable
+  resources, and a reviewed multi-resolution macOS iconset. The mark combines an open
+  book, protective harbor, and water without using Canvas, Ed, or university branding.
+
+- Changes the managed `canvas_ed_app` launcher from the legacy numbered terminal menu
+  to the PySide6 daily dashboard. An exact generated predecessor is upgraded atomically;
+  edited or unknown launchers remain preserved for review, and the GUI never opens the
+  preserved canonical file as though it were the newly generated dashboard.
+- Adds a per-course folder picker to the setup Folders step. Each new course can select
+  an existing direct child of the reviewed local course library, including an existing
+  Desktop course folder when Desktop is chosen as the library root.
+- Moves Library root selection from the early Profile page into the Folders step, so a
+  direct-child validation error can be recovered in place without restarting discovery.
+  Review is blocked until the selected Library root is an existing directory.
+- Compacts the shared setup header plus the Map and Folders layouts for scaled Windows
+  desktops, keeping primary course-pair actions and at least two course-folder rows in
+  the first viewport at the standard 1040×710 logical test size.
+- Simplifies Review to one **Save configuration** action, moves close confirmation to
+  the title-bar X, and exposes **Open daily dashboard** immediately after save without
+  requiring shortcut installation.
+- Provisions missing empty course folders as part of the reviewed save, reuses existing
+  safe folders, fails closed on collisions, and rolls back only folders created by a
+  failed save attempt.
+- Keeps a provider-isolated discovery failure visible as a partial ten-source dashboard
+  review instead of collapsing the entire preview into a generic failure.
+- Keeps existing configured course folders read-only and does not move, delete, create,
+  or infer course directories during configuration review.
+
+This source candidate is unreleased. Public `v0.2.0rc16` and its artifacts remain
+immutable; rc17 requires full automated gates plus Windows/macOS owner-device review.
+
 ## [0.2.0rc16] - 2026-10-23
 
 ### Human-readable reviewed sync

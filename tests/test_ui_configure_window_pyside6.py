@@ -101,7 +101,7 @@ class ConfigureWindowTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_existing_profile_is_preselected_and_non_destructive_edits_are_available(self) -> None:
-        self.assertEqual("Reconfigure Canvas & Ed courses", self.window.windowTitle())
+        self.assertEqual("CourseHarbor — Configure courses", self.window.windowTitle())
         self.assertEqual(2, self.controller.selected_count)
 
         self.window.continue_button.click()
@@ -115,6 +115,8 @@ class ConfigureWindowTests(unittest.TestCase):
         self.assertFalse(row.override_edit.isEnabled())
         self.assertTrue(row.initial_mode_combo.isEnabled())
         self.assertEqual(1, self.window.course_settings_combo.count())
+        self.assertFalse(self.window.choose_library_root_button.isEnabled())
+        self.assertTrue(self.window.library_root_edit.isReadOnly())
 
 
 if __name__ == "__main__":

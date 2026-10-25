@@ -179,7 +179,7 @@ layout; the confirmed course-wide Files 403 remains partial coverage. `course-sy
 still performs no sync action, and the private legacy launcher remains a separate
 compatibility path.
 
-## 6. Daily-use terminal app and launchers
+## 6. Daily-use desktop app and launchers
 
 A committed `setup` or `configure` installs seven native, profile-bound launchers in
 `<output root>/Canvas Ed MCP Launchers` by default. Windows receives `.cmd`, macOS
@@ -195,7 +195,9 @@ health_check
 open_course_folder
 ```
 
-Double-click `canvas_ed_app` to use the English numbered menu. The material-sync menu
+Double-click `canvas_ed_app` to open the PySide6 daily dashboard. Preview remains
+read-only, and Apply requires confirmation of the exact reviewed plan. The English
+numbered terminal menu remains available as `canvas-ed-mcp app`; its material-sync
 action always runs a dry-run first and applies only after a separate `y` confirmation.
 The direct `course_material_sync` launcher is intentionally the one-click apply path.
 Due launchers create reports under `<output root>/Due Dates`; they reuse identical

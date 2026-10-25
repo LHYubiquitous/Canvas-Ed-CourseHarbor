@@ -31,6 +31,7 @@ from .contracts import (
 from .daily_sync import (
     ProgressCallback,
     SyncApplyResult,
+    SyncItemSummary,
     SyncPreviewRequest,
     SyncPreviewResult,
     SyncReview,
@@ -88,7 +89,46 @@ def _issue(
     )
 
 
-def _summary(source_plan, *, actions: tuple[str, ...] | None = None) -> SyncSourceSummary:
+def _item_summaries(
+    source_plan, result, output_root: Path
+) -> tuple[SyncItemSummary, ...]:
+    discovered = sorted(
+        source_plan.batch.items, key=lambda item: item.key.identity_tuple
+    )
+    if len(discovered) != len(result.items):
+        return ()
+    stored = {
+        update.key: update.stored_file.output_relative_path
+        for update in result.state_updates
+        if update.stored_file is not None
+    }
+    summaries: list[SyncItemSummary] = []
+    for remote, item in zip(discovered, result.items, strict=True):
+        relative = item.destination or stored.get(remote.key)
+        destination = None
+        if relative is not None:
+            destination = output_root.joinpath(*relative.parts)
+        summaries.append(
+            SyncItemSummary(
+                display_name=remote.display_name,
+                kind=remote.key.kind.value,
+                action=item.action,
+                reason=item.reason,
+                destination=destination,
+            )
+        )
+    return tuple(summaries)
+
+
+def _summary(
+    source_plan,
+    *,
+    output_root: Path,
+    actions: tuple[str, ...] | None = None,
+    result=None,
+    issue_codes: tuple[str, ...] | None = None,
+) -> SyncSourceSummary:
+    source_result = result or source_plan.preview
     return SyncSourceSummary(
         course_key=source_plan.course.key,
         provider=source_plan.source.provider,
@@ -97,13 +137,14 @@ def _summary(source_plan, *, actions: tuple[str, ...] | None = None) -> SyncSour
         actions=(
             actions
             if actions is not None
-            else tuple(item.action for item in source_plan.preview.items)
+            else tuple(item.action for item in source_result.items)
         ),
-        issue_codes=source_plan.preview.issue_codes,
+        issue_codes=(issue_codes if issue_codes is not None else source_result.issue_codes),
         course_folder=source_plan.course.folder,
         course_code=source_plan.source.code,
         course_name=source_plan.source.name,
         course_term=source_plan.source.term,
+        items=_item_summaries(source_plan, source_result, output_root),
     )
 
 
@@ -321,18 +362,20 @@ class ReviewedSyncOperation:
                 providers=providers,
                 config_snapshot=config_snapshot,
                 cancellation_requested=lambda: cancellation.cancellation_requested,
-            )
-            _progress(
-                progress,
-                _PREVIEW_OPERATION,
-                ProgressPhase.DISCOVERING,
-                len(plan.sources),
-                len(selections),
+                source_completed=lambda completed, total: _progress(
+                    progress,
+                    _PREVIEW_OPERATION,
+                    ProgressPhase.DISCOVERING,
+                    completed,
+                    total,
+                ),
             )
             if cancellation.cancellation_requested:
                 session.close()
                 return SyncPreviewResult(OperationStatus.CANCELLED)
-            summaries = tuple(_summary(source) for source in plan.sources)
+            summaries = tuple(
+                _summary(source, output_root=plan.output_root) for source in plan.sources
+            )
             issues = tuple(
                 _issue(
                     code,
@@ -507,17 +550,11 @@ class ReviewedSyncOperation:
             if transaction.commit.issue_code is not None:
                 source_codes.append(transaction.commit.issue_code)
             summaries.append(
-                SyncSourceSummary(
-                    course_key=source_plan.course.key,
-                    provider=source_plan.source.provider,
-                    instance=source_plan.source.instance,
-                    course_id=source_plan.source.course_id,
-                    actions=tuple(item.action for item in result.items),
+                _summary(
+                    source_plan,
+                    output_root=pending.plan.output_root,
+                    result=result,
                     issue_codes=tuple(dict.fromkeys(source_codes)),
-                    course_folder=source_plan.course.folder,
-                    course_code=source_plan.source.code,
-                    course_name=source_plan.source.name,
-                    course_term=source_plan.source.term,
                 )
             )
             issues.extend(

@@ -15,6 +15,8 @@ sys.path.insert(0, str(REPOSITORY_ROOT))
 from ci.verify_distribution import (
     AuditError,
     _SDIST_REQUIRED,
+    _WHEEL_PACKAGE_DATA,
+    _WHEEL_PACKAGE_ENTRIES,
     _WHEEL_PACKAGE_FILES,
     audit_archive,
 )
@@ -34,7 +36,7 @@ class DistributionAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             wheel = Path(temporary) / "canvas_ed_mcp-0.1.0-py3-none-any.whl"
             with zipfile.ZipFile(wheel, "w") as archive:
-                for name in (*sorted(_WHEEL_PACKAGE_FILES),
+                for name in (*sorted(_WHEEL_PACKAGE_ENTRIES),
                     "canvas_ed_mcp-0.1.0.dist-info/METADATA",
                     "canvas_ed_mcp-0.1.0.dist-info/entry_points.txt",
                     "canvas_ed_mcp-0.1.0.dist-info/licenses/LICENSE",
@@ -52,6 +54,17 @@ class DistributionAuditTests(unittest.TestCase):
 
         self.assertEqual(actual, _WHEEL_PACKAGE_FILES)
 
+    def test_wheel_data_allowlist_matches_repository_runtime_assets(self) -> None:
+        package_root = REPOSITORY_ROOT / "src" / "canvas_ed_mcp"
+        actual = {
+            path.relative_to(package_root.parent).as_posix()
+            for path in package_root.rglob("*")
+            if path.is_file()
+            and path.suffix != ".py"
+            and "__pycache__" not in path.parts
+        }
+        self.assertEqual(actual, _WHEEL_PACKAGE_DATA)
+
     def test_wheel_rejects_private_or_non_package_entries(self) -> None:
         for unsafe in (
             "credentials_local.json",
@@ -63,7 +76,7 @@ class DistributionAuditTests(unittest.TestCase):
             with self.subTest(unsafe=unsafe), tempfile.TemporaryDirectory() as temporary:
                 wheel = Path(temporary) / "canvas_ed_mcp-0.1.0-py3-none-any.whl"
                 with zipfile.ZipFile(wheel, "w") as archive:
-                    for name in _WHEEL_PACKAGE_FILES:
+                    for name in _WHEEL_PACKAGE_ENTRIES:
                         archive.writestr(name, b"")
                     archive.writestr(unsafe, b"LEAK_CANARY")
                 with self.assertRaises(AuditError):
@@ -77,7 +90,7 @@ class DistributionAuditTests(unittest.TestCase):
             with self.subTest(unsafe=unsafe), tempfile.TemporaryDirectory() as temporary:
                 wheel = Path(temporary) / "canvas_ed_mcp-0.1.0-py3-none-any.whl"
                 with zipfile.ZipFile(wheel, "w") as archive:
-                    for name in _WHEEL_PACKAGE_FILES:
+                    for name in _WHEEL_PACKAGE_ENTRIES:
                         archive.writestr(name, b"")
                     archive.writestr(unsafe, b"LEAK_CANARY")
                 with self.assertRaises(AuditError):
@@ -87,7 +100,7 @@ class DistributionAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             wheel = Path(temporary) / "canvas_ed_mcp-0.1.0-py3-none-any.whl"
             with zipfile.ZipFile(wheel, "w") as archive:
-                for name in _WHEEL_PACKAGE_FILES - {"canvas_ed_mcp/sync/model.py"}:
+                for name in _WHEEL_PACKAGE_ENTRIES - {"canvas_ed_mcp/sync/model.py"}:
                     archive.writestr(name, b"")
             with self.assertRaises(AuditError):
                 audit_archive(wheel)

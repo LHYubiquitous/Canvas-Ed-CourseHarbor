@@ -1,8 +1,8 @@
 # 测试、部署与运行
 
-> 当前 GitHub prerelease 为 `v0.2.0rc12`；当前源码候选为 `v0.2.0rc16`。rc15 的
-> 最终 macOS release gate 为 `FAIL`；rc16 的三系统 remote CI 已在 product commit `4cacce8`
-> 通过，owner-device macOS 精确包复核仍为 `NOT_RUN`。旧版本证据仅作历史参考。实时发布状态以 public repository 的
+> 当前 GitHub prerelease 为 `v0.2.0rc16`；当前源码候选为未发布的 `v0.2.0rc17`。rc15 的
+> 最终 macOS release gate 为 `FAIL`；rc16 的三系统 remote CI 已在 release-gate commit `4346a65`
+> 通过，owner-device macOS 精确 wheel 自动检查和人类可读性复核均为 `PASS`。该提交相对 Mac 已验 runtime 输入仅修改发布文档和测试生命周期，不修改安装包运行代码，发布状态为 `READY / NOT PUBLISHED`。旧版本证据仅作历史参考。实时发布状态以 public repository 的
 > GitHub Release 页面为准；PyPI 未授权、未执行。
 
 ## 验证层级

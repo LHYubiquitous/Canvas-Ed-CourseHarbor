@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +23,12 @@ except ImportError:  # pragma: no cover - PySide6 remains an optional local UI e
     QLineEdit = None  # type: ignore[assignment]
 
 from canvas_ed_mcp.application.setup_controller import SetupController, SetupStep
+from canvas_ed_mcp.application.contracts import (
+    ApplicationIssue,
+    IssueSeverity,
+    OperationStatus,
+)
+from canvas_ed_mcp.application.profiles import SetupCommitResult
 from canvas_ed_mcp.config import CanvasPlatformConfig, EdPlatformConfig, load_config
 from canvas_ed_mcp.initial import InitialSyncMode
 from canvas_ed_mcp.launchers import LauncherInstallResult
@@ -67,6 +74,9 @@ class SetupWindowTests(unittest.TestCase):
         cls.application.setQuitOnLastWindowClosed(False)
 
     def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.output_root = (Path(self.temporary.name) / "Courses").resolve()
+        self.output_root.mkdir()
         self.canvas = _course(
             "canvas", "c-1", "COMP2017", "Systems Programming", "2026-S1"
         )
@@ -81,7 +91,7 @@ class SetupWindowTests(unittest.TestCase):
         )
         self.controller = SetupController(
             profile="ui-test",
-            output_root=Path("C:/CanvasEdCourses"),
+            output_root=self.output_root,
             catalogs={
                 "canvas": (self.canvas, self.info),
                 "ed": (self.ed, self.data),
@@ -111,6 +121,7 @@ class SetupWindowTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._dispose_window()
+        self.temporary.cleanup()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -128,7 +139,11 @@ class SetupWindowTests(unittest.TestCase):
         self.window._focus_timer.start(60_000)
         self.assertTrue(self.window._focus_timer.isActive())
 
-        self.window.close()
+        with patch(
+            "canvas_ed_mcp.ui.setup_window.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            self.window.close()
 
         self.assertFalse(self.window._focus_timer.isActive())
 
@@ -340,19 +355,31 @@ class SetupWindowTests(unittest.TestCase):
         self.assertIn(
             "1 automatic suggestion", self.window.mapping_summary_label.text()
         )
-        self.assertGreaterEqual(self.window.pending_list.minimumHeight(), 180)
+        self.assertGreaterEqual(
+            self.window.pending_list.minimumHeight(),
+            self.window.pending_list.fontMetrics().lineSpacing() * 5,
+        )
         self.assertEqual(0, self.window.linked_list.count())
         self.assertEqual(0, self.window.separate_list.count())
         self.assertEqual("COMP2017-2026-S1", self.window.logical_key_edit.text())
         self.assertTrue(self.window.logical_key_label.font().bold())
-        self.assertGreaterEqual(self.window.logical_key_label.font().pointSize(), 12)
-        self.assertEqual("Treat as the same course", self.window.map_link_button.text())
+        self.assertLessEqual(
+            self.window.logical_key_label.font().pointSizeF(),
+            self.application.font().pointSizeF() + 1.0,
+        )
+        self.assertEqual("Link courses", self.window.map_link_button.text())
+        self.assertEqual("Keep separate", self.window.map_separate_button.text())
         self.assertEqual(
-            "Keep as separate courses", self.window.map_separate_button.text()
+            "Treat selected courses as the same course",
+            self.window.map_link_button.accessibleName(),
+        )
+        self.assertEqual(
+            "Keep selected courses as separate courses",
+            self.window.map_separate_button.accessibleName(),
         )
         self.assertFalse(self.window.continue_button.isEnabled())
 
-        self.window.resize(1040, 720)
+        self.window.resize(1040, 710)
         self.window.show()
         self.application.processEvents()
         pending_bottom = self.window.pending_list.mapTo(
@@ -362,9 +389,11 @@ class SetupWindowTests(unittest.TestCase):
             self.window, self.window.logical_key_edit.rect().topLeft()
         ).y()
         self.assertGreater(logical_key_top, pending_bottom)
-        self.assertGreater(
-            self.window.map_scroll.verticalScrollBar().maximum(), 0
-        )
+        viewport = self.window.map_scroll.viewport()
+        for button in (self.window.map_link_button, self.window.map_separate_button):
+            button_bottom = button.mapTo(viewport, button.rect().bottomLeft()).y()
+            self.assertLessEqual(button_bottom + 8, viewport.rect().bottom())
+            self.assertGreaterEqual(button.width(), button.sizeHint().width())
         separate_right = self.window.separate_list.mapTo(
             self.window, self.window.separate_list.rect().bottomRight()
         ).x()
@@ -429,7 +458,7 @@ class SetupWindowTests(unittest.TestCase):
         self.assertTrue(self.window.continue_button.isEnabled())
         self.window.hide()
 
-    def test_exit_setup_confirms_before_discarding_a_visible_draft(self) -> None:
+    def test_title_bar_close_confirms_before_discarding_a_visible_draft(self) -> None:
         self.window.show()
         self.application.processEvents()
         self.window.set_course_checked(self.canvas.key, True)
@@ -438,14 +467,14 @@ class SetupWindowTests(unittest.TestCase):
             "canvas_ed_mcp.ui.setup_window.QMessageBox.question",
             return_value=QMessageBox.StandardButton.No,
         ):
-            self.window.exit_button.click()
+            self.window.close()
         self.assertTrue(self.window.isVisible())
 
         with patch(
             "canvas_ed_mcp.ui.setup_window.QMessageBox.question",
             return_value=QMessageBox.StandardButton.Yes,
         ):
-            self.window.exit_button.click()
+            self.window.close()
         self.application.processEvents()
         self.assertFalse(self.window.isVisible())
 
@@ -465,7 +494,10 @@ class SetupWindowTests(unittest.TestCase):
             row.initial_mode_combo.accessibleName(),
         )
         self.assertEqual("Default: COMP2017", row.default_label.text())
-        self.assertGreaterEqual(self.window.folder_table.rowHeight(0), 70)
+        self.assertEqual(str(self.output_root), self.window.library_root_edit.text())
+        self.assertEqual("Library root", self.window.library_root_edit.accessibleName())
+        self.assertTrue(self.window.choose_library_root_button.isEnabled())
+        self.assertGreaterEqual(self.window.folder_table.rowHeight(0), 64)
         header = self.window.folder_table.horizontalHeader()
         self.assertEqual(190, header.sectionSize(0))
         self.assertGreaterEqual(header.sectionSize(1), 220)
@@ -534,6 +566,96 @@ class SetupWindowTests(unittest.TestCase):
         row.override_edit.clear()
         self.window.continue_button.click()
         self.assertEqual("COMP2017", self.controller.mapping_choices[0].folder)
+
+    def test_folders_keep_two_course_rows_visible_at_scaled_desktop_height(self) -> None:
+        self._select_pair()
+        self.window.set_course_checked(self.info.key, True)
+        self.window.set_course_checked(self.data.key, True)
+        self.window.continue_button.click()
+        self.window.pending_list.setCurrentRow(0)
+        self.window.map_link_button.click()
+        self.window.continue_button.click()
+        self.assertGreaterEqual(self.window.folder_table.rowCount(), 2)
+
+        self.window.resize(1040, 710)
+        self.window.show()
+        self.application.processEvents()
+
+        second = self.window.folder_table.item(1, 0)
+        self.assertIsNotNone(second)
+        second_rect = self.window.folder_table.visualItemRect(second)
+        self.assertLessEqual(
+            second_rect.bottom(),
+            self.window.folder_table.viewport().rect().bottom(),
+        )
+        self.assertGreaterEqual(
+            self.window.folder_table.viewport().height(),
+            2 * self.window.folder_table.rowHeight(0),
+        )
+
+    def test_course_folder_browse_uses_controller_validation_and_updates_draft(self) -> None:
+        logical_key = self._open_folders_with_linked_pair()
+        row = self.window.folder_rows[logical_key]
+        selected = self.output_root / "COMP2017 Desktop"
+        selected.mkdir()
+
+        with patch(
+            "canvas_ed_mcp.ui.setup_window.QFileDialog.getExistingDirectory",
+            return_value=str(selected),
+        ), patch.object(
+            self.controller,
+            "folder_name_for_selected_directory",
+            return_value="COMP2017 Desktop",
+        ) as validate:
+            row.browse_button.click()
+
+        validate.assert_called_once_with(selected)
+        self.assertEqual("COMP2017 Desktop", row.override_edit.text())
+        self.assertEqual(
+            f"Choose target folder for {logical_key}",
+            row.browse_button.accessibleName(),
+        )
+
+    def test_invalid_course_folder_can_recover_by_changing_library_root(self) -> None:
+        logical_key = self._open_folders_with_linked_pair()
+        other_root = (Path(self.temporary.name) / "Desktop").resolve()
+        selected = other_root / "COMP2017"
+        selected.mkdir(parents=True)
+        row = self.window.folder_rows[logical_key]
+
+        with patch(
+            "canvas_ed_mcp.ui.setup_window.QFileDialog.getExistingDirectory",
+            return_value=str(selected),
+        ):
+            row.browse_button.click()
+
+        self.assertIn("directly inside", self.window.status_label.text())
+        self.assertTrue(self.window.back_button.isEnabled())
+        self.assertTrue(self.window.choose_library_root_button.isEnabled())
+
+        with patch(
+            "canvas_ed_mcp.ui.setup_window.QFileDialog.getExistingDirectory",
+            return_value=str(other_root),
+        ):
+            self.window.choose_library_root_button.click()
+
+        self.assertEqual(other_root, self.controller.output_root)
+        self.assertEqual(str(other_root), self.window.library_root_edit.text())
+        self.assertIn("Library root changed", self.window.status_label.text())
+        row = self.window.folder_rows[logical_key]
+        with patch(
+            "canvas_ed_mcp.ui.setup_window.QFileDialog.getExistingDirectory",
+            return_value=str(selected),
+        ):
+            row.browse_button.click()
+        self.assertEqual("COMP2017", row.override_edit.text())
+        self.assertEqual("", self.window.status_label.text())
+
+        self.window.continue_button.click()
+        self.assertEqual(SetupStep.REVIEW, self.controller.step)
+        review = self.controller.review
+        self.assertIsNotNone(review)
+        self.assertEqual(other_root, review.plan.config.output_root)  # type: ignore[union-attr]
 
     def test_duplicate_folder_override_is_safe_and_keeps_the_first_value(self) -> None:
         self._select_pair()
@@ -619,6 +741,7 @@ class SetupWindowTests(unittest.TestCase):
         self.assertIn(logical_key, self.window.review_preview.toPlainText())
         self.assertIn("Preview only", self.window.review_notice.text())
         self.assertIn("nothing has been saved", self.window.review_notice.text())
+        self.assertTrue(self.window.review_notice.details_label.isHidden())
         self.assertFalse(self.window.continue_button.isEnabled())
         self.assertIsNone(self.window.findChild(QPushButton, "commit_button"))
 
@@ -640,13 +763,14 @@ class SetupWindowTests(unittest.TestCase):
             review = self.controller.review
             self.assertIsNotNone(review)
             self.assertIn(logical_key, self.window.review_preview.toPlainText())
-            self.assertIsNotNone(self.window.findChild(QPushButton, "commit_button"))
+            self.assertIsNone(self.window.findChild(QPushButton, "commit_button"))
+            self.assertEqual("Save configuration", self.window.continue_button.text())
 
             with patch(
                 "canvas_ed_mcp.ui.setup_window.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.Cancel,
             ), patch.object(saver, "save", wraps=saver.save) as save:
-                self.window.commit_button.click()
+                self.window.continue_button.click()
             self.assertEqual(0, save.call_count)
             self.assertFalse(config_path.exists())
 
@@ -654,7 +778,7 @@ class SetupWindowTests(unittest.TestCase):
                 "canvas_ed_mcp.ui.setup_window.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.Save,
             ):
-                self.window.commit_button.click()
+                self.window.continue_button.click()
             for _ in range(200):
                 self.application.processEvents()
                 if self.window.configuration_saved:
@@ -663,10 +787,28 @@ class SetupWindowTests(unittest.TestCase):
 
             self.assertTrue(self.window.configuration_saved)
             self.assertEqual(review.plan.config, load_config(config_path))  # type: ignore[union-attr]
-            self.assertEqual("Close", self.window.exit_button.text())
-            self.assertFalse(self.window.commit_button.isEnabled())
+            self.assertTrue(self.window.navigation_bar.isHidden())
+            self.assertEqual("success", self.window.review_notice.property("tone"))
             self.assertFalse(self.window.install_launchers_button.isHidden())
-            self.assertTrue(self.window.open_daily_menu_button.isHidden())
+            self.assertFalse(self.window.open_daily_menu_button.isHidden())
+
+            with patch(
+                "canvas_ed_mcp.ui.setup_window.QProcess.startDetached",
+                return_value=(True, 123),
+            ) as start_dashboard:
+                self.window.open_daily_menu_button.click()
+            start_dashboard.assert_called_once_with(
+                sys.executable,
+                [
+                    "-I",
+                    "-m",
+            "canvas_ed_mcp.ui.app_shell",
+                    "--profile",
+                    "ui-test",
+                    "--config",
+                    str(config_path.resolve()),
+                ],
+            )
 
             installed = LauncherInstallResult(
                 created=("canvas_ed_app.cmd",), preserved=(), reused=()
@@ -681,6 +823,10 @@ class SetupWindowTests(unittest.TestCase):
             self.assertTrue(self.window.install_launchers_button.isHidden())
             self.assertFalse(self.window.open_daily_menu_button.isHidden())
             self.assertFalse(self.window.open_launchers_button.isHidden())
+            self.assertEqual(
+                "Open daily dashboard",
+                self.window.open_daily_menu_button.text(),
+            )
             self.assertIn("Setup is complete", self.window.review_notice.text())
             self.assertIn("Daily-use shortcuts are ready", self.window.status_label.text())
 
@@ -688,9 +834,139 @@ class SetupWindowTests(unittest.TestCase):
                 "canvas_ed_mcp.ui.setup_window.QDesktopServices.openUrl",
                 return_value=True,
             ) as open_url:
-                self.window.open_daily_menu_button.click()
                 self.window.open_launchers_button.click()
-            self.assertEqual(2, open_url.call_count)
+            self.assertEqual(1, open_url.call_count)
+
+            self.window.install_launchers_button.show()
+            preserved = LauncherInstallResult(
+                created=("canvas_ed_app.cmd.new",),
+                preserved=("canvas_ed_app.cmd",),
+                reused=(),
+            )
+            with patch(
+                "canvas_ed_mcp.ui.setup_window.install_launchers",
+                return_value=preserved,
+            ):
+                self.window.install_launchers_button.click()
+
+            self.assertFalse(self.window.open_daily_menu_button.isHidden())
+            self.assertIsNone(self.window._daily_menu_launcher)
+            self.assertIn("edited shortcut was preserved", self.window.status_label.text())
+
+    def test_embedded_dashboard_opener_stays_in_process(self) -> None:
+        self._dispose_window()
+        with tempfile.TemporaryDirectory() as temporary:
+            config_path = Path(temporary) / "profiles" / "ui-test.toml"
+            opened: list[tuple[str, Path]] = []
+
+            def open_dashboard(profile: str, path: Path) -> bool:
+                opened.append((profile, path))
+                return True
+
+            self.window = build_config_saving_setup_window(
+                self.controller,
+                config_path,
+                dashboard_opener=open_dashboard,
+            )
+            self._open_folders_with_linked_pair()
+            self.window.continue_button.click()
+            self.window._config_save_finished(
+                SetupCommitResult(OperationStatus.SUCCEEDED, config_path.resolve())
+            )
+
+            with patch(
+                "canvas_ed_mcp.ui.setup_window.QProcess.startDetached"
+            ) as detached:
+                self.window.open_daily_menu_button.click()
+
+            detached.assert_not_called()
+            self.assertEqual(
+                [("ui-test", config_path.resolve())],
+                opened,
+            )
+
+    def test_setup_close_notifies_first_run_host_once(self) -> None:
+        closed: list[bool] = []
+        self.window.windowClosed.connect(closed.append)
+        self.window.show()
+        self.application.processEvents()
+
+        with patch(
+            "canvas_ed_mcp.ui.setup_window.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            self.window.close()
+            self.application.processEvents()
+
+        self.assertEqual([False], closed)
+
+    def test_shortcut_success_does_not_hide_partial_save_cleanup_warning(self) -> None:
+        self._dispose_window()
+        with tempfile.TemporaryDirectory() as temporary:
+            config_path = Path(temporary) / "profiles" / "ui-test.toml"
+            self.window = build_config_saving_setup_window(
+                self.controller,
+                config_path,
+            )
+            self._open_folders_with_linked_pair()
+            self.window.continue_button.click()
+            partial = SetupCommitResult(
+                OperationStatus.PARTIAL,
+                config_path,
+                (
+                    ApplicationIssue(
+                        "config_cleanup_pending",
+                        IssueSeverity.WARNING,
+                    ),
+                ),
+            )
+
+            self.window._config_save_finished(partial)
+            installed = LauncherInstallResult(
+                created=("canvas_ed_app.cmd",), preserved=(), reused=()
+            )
+            with patch(
+                "canvas_ed_mcp.ui.setup_window.install_launchers",
+                return_value=installed,
+            ):
+                self.window.install_launchers_button.click()
+
+            self.assertEqual("warning", self.window.review_notice.property("tone"))
+            self.assertIn("cleanup", self.window.review_notice.text().lower())
+            self.assertIn("cleanup", self.window.status_label.text().lower())
+
+    def test_shortcut_failure_does_not_hide_partial_save_cleanup_warning(self) -> None:
+        self._dispose_window()
+        with tempfile.TemporaryDirectory() as temporary:
+            config_path = Path(temporary) / "profiles" / "ui-test.toml"
+            self.window = build_config_saving_setup_window(
+                self.controller,
+                config_path,
+            )
+            self._open_folders_with_linked_pair()
+            self.window.continue_button.click()
+            self.window._config_save_finished(
+                SetupCommitResult(
+                    OperationStatus.PARTIAL,
+                    config_path,
+                    (
+                        ApplicationIssue(
+                            "config_cleanup_pending",
+                            IssueSeverity.WARNING,
+                        ),
+                    ),
+                )
+            )
+
+            with patch(
+                "canvas_ed_mcp.ui.setup_window.install_launchers",
+                side_effect=OSError("synthetic install failure"),
+            ):
+                self.window.install_launchers_button.click()
+
+            self.assertEqual("warning", self.window.review_notice.property("tone"))
+            self.assertIn("cleanup", self.window.review_notice.text().lower())
+            self.assertIn("cleanup", self.window.status_label.text().lower())
 
     def test_value_errors_become_safe_status_messages(self) -> None:
         self.window.set_course_checked(self.canvas.key, True)

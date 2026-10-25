@@ -1,4 +1,4 @@
-"""Reviewed config-only save boundary for the desktop setup adapter."""
+"""Reviewed local-setup save boundary for the desktop setup adapter."""
 
 from __future__ import annotations
 
@@ -41,8 +41,32 @@ def _conflict(path: Path, code: str) -> SetupCommitResult:
     )
 
 
+def _failure(path: Path, code: str) -> SetupCommitResult:
+    return SetupCommitResult(
+        OperationStatus.FAILED,
+        path,
+        (ApplicationIssue(code, IssueSeverity.ERROR),),
+    )
+
+
+def _is_link_like(path: Path) -> bool:
+    return path.is_symlink() or bool(
+        getattr(path, "is_junction", lambda: False)()
+    )
+
+
+def _rollback_empty_folders(created: list[Path]) -> bool:
+    complete = True
+    for path in reversed(created):
+        try:
+            path.rmdir()
+        except OSError:
+            complete = False
+    return complete
+
+
 class ConfigOnlySetupSaver:
-    """Seal and commit only the exact, current review shown by a controller."""
+    """Commit an exact review and provision its missing empty course folders."""
 
     def __init__(self, controller: SetupController, config_path: Path) -> None:
         if not isinstance(controller, SetupController):
@@ -98,10 +122,60 @@ class ConfigOnlySetupSaver:
                 )
             if not self._is_current(review):
                 return _conflict(self._config_path, "review_required")
-            result = commit_setup_review(
-                sealed.review,
-                config_path=self._config_path,
-            )
+            reviewed_output_root = review.plan.config.output_root
+            if _is_link_like(reviewed_output_root):
+                return _failure(self._config_path, "invalid_output_root")
+            output_root = reviewed_output_root.resolve(strict=False)
+            if not output_root.is_dir() or _is_link_like(output_root):
+                return _failure(self._config_path, "invalid_output_root")
+            targets: list[Path] = []
+            for course in review.plan.config.courses:
+                target = output_root / course.folder
+                try:
+                    if target.parent.resolve(strict=True) != output_root.resolve(strict=True):
+                        return _conflict(self._config_path, "course_folder_target_unsafe")
+                except (OSError, RuntimeError, ValueError):
+                    return _conflict(self._config_path, "course_folder_target_unsafe")
+                if target.exists() or _is_link_like(target):
+                    if _is_link_like(target) or not target.is_dir():
+                        return _conflict(self._config_path, "course_folder_conflict")
+                targets.append(target)
+            created: list[Path] = []
+            try:
+                for target in targets:
+                    if target.exists():
+                        continue
+                    try:
+                        target.mkdir()
+                        created.append(target)
+                    except FileExistsError:
+                        if _is_link_like(target) or not target.is_dir():
+                            raise OSError("unsafe concurrent course folder")
+            except OSError:
+                cleanup_complete = _rollback_empty_folders(created)
+                return _failure(
+                    self._config_path,
+                    "course_folder_create_failed"
+                    if cleanup_complete
+                    else "course_folder_cleanup_pending",
+                )
+            try:
+                result = commit_setup_review(
+                    sealed.review,
+                    config_path=self._config_path,
+                )
+            except Exception:
+                cleanup_complete = _rollback_empty_folders(created)
+                return _failure(
+                    self._config_path,
+                    "config_write_failed"
+                    if cleanup_complete
+                    else "course_folder_cleanup_pending",
+                )
+            if result.status not in {OperationStatus.SUCCEEDED, OperationStatus.PARTIAL}:
+                cleanup_complete = _rollback_empty_folders(created)
+                if not cleanup_complete:
+                    return _failure(self._config_path, "course_folder_cleanup_pending")
             if result.status in {OperationStatus.SUCCEEDED, OperationStatus.PARTIAL}:
                 with self._lock:
                     self._completed = True

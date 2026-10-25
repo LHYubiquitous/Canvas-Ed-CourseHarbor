@@ -14,7 +14,7 @@ already available:
 mkdir -p ~/Developer
 cd ~/Developer
 git clone --branch hy/phase-3-4-portability --single-branch \
-  https://github.com/LHYubiquitous/canvas-ed-mcp.git canvas-ed-mcp-rc-test
+  https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor.git canvas-ed-mcp-rc-test
 cd canvas-ed-mcp-rc-test
 ```
 

@@ -3,5 +3,8 @@ include CONTRIBUTING.md
 include README.zh-CN.md
 include SECURITY.md
 include THIRD_PARTY_NOTICES.md
+recursive-include packaging/icons *.md *.png *.py
+recursive-include packaging/macos *.png
+recursive-include packaging/windows *.ico *.py *.spec
 exclude tests/test_mcp_config.py
 exclude tests/test_sync_output.py

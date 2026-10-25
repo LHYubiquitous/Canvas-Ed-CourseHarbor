@@ -216,6 +216,22 @@ class SetupSession:
     def defaults(self) -> SetupDefaults:
         return self._defaults
 
+    def set_output_root(self, output_root: Path) -> bool:
+        """Replace the reviewed library root without touching the filesystem."""
+
+        if not isinstance(output_root, Path) or not output_root.is_absolute():
+            raise ValueError("library root must be an absolute Path")
+        try:
+            selected = output_root.resolve(strict=False)
+            current = self.output_root.resolve(strict=False)
+        except (OSError, RuntimeError):
+            raise ValueError("library root could not be resolved safely") from None
+        if selected == current:
+            return False
+        self.output_root = selected
+        self._mark_changed()
+        return True
+
     @property
     def canvas_platform(self) -> CanvasPlatformConfig:
         return self._canvas_platform

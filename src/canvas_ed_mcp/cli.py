@@ -847,7 +847,7 @@ def configure_gui_main(argv: Sequence[str] | None = None) -> int:
     """Parse desktop options before importing the optional Qt runtime."""
     parser = argparse.ArgumentParser(
         prog="canvas-ed-configure",
-        description="Reconfigure an existing Canvas & Ed profile",
+        description="Reconfigure an existing CourseHarbor profile",
     )
     parser.add_argument("--profile", default="default")
     parser.add_argument("--config", type=Path)

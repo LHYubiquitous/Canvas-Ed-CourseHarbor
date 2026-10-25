@@ -1,14 +1,15 @@
-# Canvas Ed MCP
+# CourseHarbor
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Canvas Ed MCP 是面向学生的本地桌面工具，可从 Canvas、Ed 或两者同步课程资料，
+CourseHarbor 是面向学生的本地桌面工具，可从 Canvas、Ed 或两者同步课程资料，
 生成本周截止日期 TXT 与全学期 Markdown 清单，并为已确认的课程提供只读 MCP 工具。
 它只向本地输出目录写文件，不会在 Canvas 或 Ed 上提交、编辑或删除内容。
 
 `0.2.0rc16` 是当前 GitHub prerelease。请从
 [v0.2.0rc16 Release](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc16)
 下载经过审核的 `canvas_ed_mcp-0.2.0rc16-py3-none-any.whl`；本项目尚未发布到 PyPI。
+下文所述图形化 token 输入仍属于未发布源码候选，不在不可变的 rc16 artifacts 中。
 
 ## 1. 安装
 
@@ -59,15 +60,34 @@ Secret Service 或 KWallet；不要用 plaintext/Null keyring 规避检查。
 ### 2.2 Ed API token
 
 1. 登录能够访问目标课程的 Ed 账号。
-2. 打开澳洲区 [Ed API Tokens](https://edstem.org/au/settings/api-tokens)。
+2. 从当前登录账号所在区域进入 **Settings → API Tokens**。
 3. 为 `canvas-ed-mcp` 新建一个独立 token，并在创建时复制。
 
 Ed 接口目前属于 unofficial、schema-sensitive 集成。不要用 Canvas token、SSO 密码、
 浏览器 cookie 或开发者工具中复制的请求代替 Ed API token。
+本项目只验证过澳洲区 token 页面 `https://edstem.org/au/settings/api-tokens`；其他 Ed 区域
+均为 `NOT_RUN`。应从已登录账号进入设置页，不要猜测其他区域的 hostname。
 
-### 2.3 写入系统钥匙串
+### 2.3 在桌面向导中保存并验证
 
-以下命令会安全地提示输入值，不会把 token 放进命令历史。只执行你实际使用的 provider：
+启动 `canvas-ed-setup`。若启用 Canvas，先填写学校自己的 API base URL；把 token 粘贴到
+masked **API token** 输入框，然后选择 **Save and test**。应用会先检查安全的 native
+credential store，再对单个 provider 执行只读课程列表请求；只有验证成功后才写入该
+profile/provider 的确定性 keyring reference。任务开始时输入框会立即清空，token 不会进入
+clipboard、config、state、命令参数或 UI 状态文本。
+
+重启或诊断时使用 **Test existing**。replacement 输入框留空表示保留旧 credential；替换
+前必须确认准确的 profile、provider 与本地 keyring target。验证失败或写入前取消不会改动
+旧值；如果后续 config 保存失败，已验证的 credential 会保留，用户可直接重试 setup。
+
+`env:` reference 属于 CLI/headless 配置中的 externally managed、read-only 高级选项；
+application layer 可以测试已有引用，但不能覆盖它；当前 first-run keyring UI 不创建
+`env:` reference。
+
+### 2.4 终端高级 fallback
+
+headless 或恢复场景仍可使用以下命令。它们会安全提示输入值，不把 token 放进命令历史；
+只执行实际使用的 provider：
 
 ```text
 python -m keyring set canvas-ed-mcp/default canvas
@@ -98,10 +118,19 @@ canvas-ed-setup
 在源码目录也可以使用 `python -m canvas_ed_mcp.ui.first_run_window` 启动。
 
 它会使用真实 profile 路径和只读 Canvas/Ed 课程发现，再把真实课程列表交给已经验收的
-`Select → Map → Folders → Review` 流程。Credential 输入框只接受
-`keyring:canvas-ed-mcp/default/canvas` 这类引用，不接收或显示 token 本身。最终确认只创建
-新配置，不下载课程、不创建输出目录、不写 state，也不安装 launcher。该可安装入口尚不是
-签名或冻结后的桌面发行包。
+`Select → Map → Folders → Review` 流程。Token 输入框为 masked 且 transient；配置只接收
+`keyring:canvas-ed-mcp/default/canvas` 这类确定性引用。最终确认会创建新配置，并为尚不存在的
+课程创建空的 course folder；它不会下载课程内容、不创建 Library root、不写 sync state，
+也不安装 launcher。该可安装入口尚不是签名或冻结后的桌面发行包。
+
+Library root 的选择被明确推迟到 Folders 步骤。该 root 同时包含课程文件夹、
+`Canvas Ed MCP Launchers` 与 due reports，因此不应只称为 launcher directory。Library root
+必须在进入 Review 前已经存在，setup 不会静默创建它。每门新的 logical course
+都可以点击 **Browse…** 选择该 root 下的直接子文件夹；例如先把 Desktop
+设为 Library root，再分别选择桌面课程文件夹。如果所选课程文件夹不在当前 root 下，可在
+同一页修改 root 后重试，无需重新执行 provider discovery。保存时，已有目录会直接复用，
+尚不存在的课程目录会立即创建。已有配置中的 root 与课程文件夹
+仍保持只读，因为 configuration workflow 不会移动文件。
 
 先预览，不写配置、状态或课程文件：
 
@@ -151,23 +180,45 @@ canvas-ed-mcp configure --profile default
 
 ## 4. 日常使用
 
-输出目录下的 `Canvas Ed MCP Launchers` 包含 Windows `.cmd`、macOS `.command` 或
-Linux `.sh` 启动脚本。双击 `canvas_ed_app` 会打开英文编号菜单；也可直接使用：
+保存配置后可以选择把 Windows `.cmd`、macOS `.command` 或 Linux `.sh` 启动脚本安装到
+输出目录下的 `Canvas Ed MCP Launchers`。无需先安装 shortcuts，也可从 Setup 直接打开
+PySide6 CourseHarbor App Shell；安装后双击 `canvas_ed_app` 也会打开同一窗口。
 
-安装 `gui` 可选依赖后，可以启动第一版日常桌面 dashboard：
+安装 `gui` 可选依赖后，可以启动桌面 App：
 
 ```text
-canvas-ed-app --profile default
+courseharbor
 ```
 
-它会显示当前 profile、已连接来源、本地输出目录，并在线程池中生成课程资料同步预览。
-正式 Apply 前仍需确认，而且只能应用刚才准确审核过的 plan；部分 provider 的 warning
-不会被隐藏。工作中关闭窗口会先请求协作式取消，等到安全边界后再释放 provider session。
-这是新增的预览入口；在桌面打包和 owner-device release gate 完成前，已有
-`canvas_ed_app` 启动脚本仍继续打开经过实测的终端菜单。
+不带参数启动时：没有 profile 会进入 First run；只有一个健康 profile 会直接打开；存在多个
+profile 或某个 profile 需要修复时，会显示本地 Profile chooser。这个检查只读取本地
+config/state metadata，不连接 Canvas 或 Ed。`canvas-ed-app --profile default` 继续用于
+指定 profile 和恢复场景。安装生成的 `courseharbor` GUI entry point 在正常 Windows 启动时
+不打开控制台；private `v0.2.0rc17` GitHub prerelease 包含 self-contained Windows onedir
+candidate，已通过自动 startup/relocation checks 与 owner-confirmed visible journey。
+signed installer 与 upgrade/uninstall 仍为 `NOT_RUN`。
+
+同一个窗口可以进入 Library、Due dates、Courses、Connections、Health & About，并可直接
+Open local library。Library 保留异步 reviewed preview/apply 边界；course-material discovery
+使用有界的 read-only concurrency 与 Canvas bulk indexes，apply 仍保持有序串行。Due dates
+拆分为 **This week** 与 **Semester** 两个独立 tab，各自拥有 Load、export folder 与明确的
+Export 操作，选择目录本身不会写文件。Courses 可以按 Course → sync run → changed files
+逐层展开，显示每次新增或更新的文件及准确 local destination；本地报告历史不含 credential
+或 provider 原始错误文本。Connections 使用短暂的 masked input 与系统
+credential store。工作中关闭窗口会先请求协作式取消，等到安全边界后再释放 provider
+session。经过实测的英文编号终端菜单仍可通过 `canvas-ed-mcp app` 用于 CLI workflow。
+左侧的 **Switch profile** 会先等待当前任务到达安全取消边界，再返回 Profile chooser。
+新建配置时，**Open daily dashboard** 会在同一个进程中用 App Shell 替换已经完成的 Setup；
+独立 setup 命令仍保留 detached fallback，继续作为可单独使用的恢复入口。
+
+在内嵌的新 profile 流程中关闭 Course selection，会返回刷新后的 Profile chooser。
+**Remove profile…** 只有在针对性确认后才会让选中的 profile 从 chooser 消失：程序会先
+复核 config revision，再把配置移入 profile 配置目录旁的私有 `.removed` archive。
+下载的课程文件、系统 credential、sync state、logs/cache 都不会删除，也不会撤销远程 Token。
 
 | 启动脚本 | 用途 |
 |---|---|
+| `canvas_ed_app` | 打开 CourseHarbor App Shell |
 | `course_material_sync` | 更新所有已配置课程资料 |
 | `this_week_due` | 生成 `Due Dates/this-week-due.txt` |
 | `this_semester_due` | 按教学周生成全学期 Markdown checklist |
@@ -236,7 +287,8 @@ canvas-ed-mcp launchers install --profile default
   程序不会用不完整数据覆盖旧报告。
 - **启动脚本仍指向旧环境**：运行
   `canvas-ed-mcp launchers install --profile default`。用户手动编辑过的脚本会保留，新的
-  managed candidate 会以 `.new` 后缀生成供审核。
+  managed candidate 会以 `.new` 后缀生成供审核；此时 GUI 只打开 shortcuts folder 供检查，
+  不会把被保留的旧 canonical 文件当作新的 daily dashboard 执行。
 - **Ed schema drift**：Ed API 没有稳定公开 schema。程序会 fail closed 并报告 partial
   item，不会静默丢弃后假装同步成功。
 

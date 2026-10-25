@@ -8,7 +8,9 @@ import ipaddress
 import json
 import re
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from threading import RLock
 from typing import Any
 from urllib.parse import (
     parse_qsl,
@@ -382,12 +384,14 @@ class CanvasProvider(_CanvasCatalogProvider):
         self._file_metadata: dict[SourceKey, dict[str, Any]] = {}
         self._page_items: dict[SourceKey, RemoteItem] = {}
         self._page_snapshots: dict[SourceKey, dict[str, Any]] = {}
+        self._cache_lock = RLock()
 
     def close(self) -> None:
-        self._file_items.clear()
-        self._file_metadata.clear()
-        self._page_items.clear()
-        self._page_snapshots.clear()
+        with self._cache_lock:
+            self._file_items.clear()
+            self._file_metadata.clear()
+            self._page_items.clear()
+            self._page_snapshots.clear()
         try:
             self._asset_client.close()
         finally:
@@ -591,7 +595,11 @@ class CanvasProvider(_CanvasCatalogProvider):
 
         try:
             modules = self._api_list(
-                f"{self.base_url}/courses/{encoded_course}/modules"
+                f"{self.base_url}/courses/{encoded_course}/modules",
+                {
+                    "include[]": ["items", "content_details"],
+                    "per_page": 100,
+                },
             )
         except ProviderError as exc:
             if exc.category == "authentication_failed":
@@ -608,6 +616,7 @@ class CanvasProvider(_CanvasCatalogProvider):
                     )
                 )
 
+        module_entries: list[tuple[str, list[object]]] = []
         for module in modules:
             if failed == set(kinds):
                 break
@@ -628,10 +637,19 @@ class CanvasProvider(_CanvasCatalogProvider):
                 group = _safe_text(
                     module.get("name"), "module name", fallback="Canvas Module"
                 )
-                module_items = self._api_list(
-                    f"{self.base_url}/courses/{encoded_course}/modules/"
-                    f"{quote(module_id, safe='')}/items"
-                )
+                inline_items = module.get("items")
+                if inline_items is None:
+                    module_items = self._api_list(
+                        f"{self.base_url}/courses/{encoded_course}/modules/"
+                        f"{quote(module_id, safe='')}/items",
+                        {"include[]": "content_details", "per_page": 100},
+                    )
+                elif isinstance(inline_items, list):
+                    module_items = inline_items
+                else:
+                    raise ProviderError(
+                        "schema_drift", "Canvas inline module items are invalid"
+                    )
             except ProviderError as exc:
                 if RemoteKind.PAGE in kinds:
                     failed.add(RemoteKind.PAGE)
@@ -645,6 +663,56 @@ class CanvasProvider(_CanvasCatalogProvider):
                     )
                 break
 
+            module_entries.append((group, module_items))
+
+        all_files: list[object] = []
+        files_issue: ProviderError | None = None
+        file_metadata_by_id: dict[str, dict[str, Any]] = {}
+        if RemoteKind.FILE in kinds and RemoteKind.FILE not in failed:
+            try:
+                all_files = self._api_list(
+                    f"{self.base_url}/courses/{encoded_course}/files",
+                    {"sort": "updated_at", "order": "desc", "per_page": 100},
+                )
+            except ProviderError as exc:
+                files_issue = exc
+            else:
+                for metadata in all_files:
+                    if not isinstance(metadata, dict):
+                        continue
+                    try:
+                        remote_id = _required_id(metadata.get("id"), "file")
+                    except ProviderError:
+                        continue
+                    file_metadata_by_id.setdefault(remote_id, metadata)
+
+        # Page bodies are fetched only for pages explicitly linked from Modules.
+        # A bounded pool removes the per-page latency chain without enumerating or
+        # reading unrelated course pages. httpx.Client supports concurrent threads.
+        page_payloads: dict[str, object | ProviderError] = {}
+        page_endpoints = tuple(
+            dict.fromkeys(
+                item.get("url")
+                for _, module_items in module_entries
+                for item in module_items
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "Page"
+                    and isinstance(item.get("url"), str)
+                    and item.get("url")
+                )
+            )
+        )
+        if RemoteKind.PAGE in kinds and RemoteKind.PAGE not in failed and page_endpoints:
+            with ThreadPoolExecutor(max_workers=min(4, len(page_endpoints))) as executor:
+                futures = tuple(executor.submit(self._api_json, endpoint) for endpoint in page_endpoints)
+                for endpoint, future in zip(page_endpoints, futures):
+                    try:
+                        page_payloads[endpoint] = future.result()
+                    except ProviderError as exc:
+                        page_payloads[endpoint] = exc
+
+        for group, module_items in module_entries:
             for module_item in module_items:
                 current_index = item_index
                 item_index += 1
@@ -658,7 +726,15 @@ class CanvasProvider(_CanvasCatalogProvider):
                 ):
                     try:
                         endpoint = _safe_text(module_item.get("url"), "file API URL")
-                        metadata = self._api_json(endpoint)
+                        content_id = module_item.get("content_id")
+                        metadata = (
+                            file_metadata_by_id.get(str(content_id))
+                            if content_id is not None
+                            else None
+                        )
+                        if metadata is None:
+                            candidate = self._api_json(endpoint)
+                            metadata = candidate if isinstance(candidate, dict) else None
                         if not isinstance(metadata, dict):
                             raise ProviderError(
                                 "schema_drift", "Canvas file response is invalid"
@@ -697,7 +773,10 @@ class CanvasProvider(_CanvasCatalogProvider):
                 ):
                     try:
                         endpoint = _safe_text(module_item.get("url"), "page API URL")
-                        page = self._api_json(endpoint)
+                        candidate = page_payloads.get(endpoint)
+                        if isinstance(candidate, ProviderError):
+                            raise candidate
+                        page = candidate if isinstance(candidate, dict) else None
                         if not isinstance(page, dict):
                             raise ProviderError(
                                 "schema_drift", "Canvas page response is invalid"
@@ -729,21 +808,16 @@ class CanvasProvider(_CanvasCatalogProvider):
                         staged_items.append(item)
 
         if RemoteKind.FILE in kinds and RemoteKind.FILE not in failed:
-            try:
-                all_files = self._api_list(
-                    f"{self.base_url}/courses/{encoded_course}/files",
-                    {"sort": "updated_at", "order": "desc", "per_page": 100},
-                )
-            except ProviderError as exc:
+            if files_issue is not None:
                 if not staged_file_items:
                     failed.add(RemoteKind.FILE)
                 issues.append(
                     self._issue(
                         course_id=course_id,
                         kind=RemoteKind.FILE,
-                        code=exc.category,
+                        code=files_issue.category,
                         item_index=None,
-                        retry_required=exc.category != "authorization_failed",
+                        retry_required=files_issue.category != "authorization_failed",
                     )
                 )
             else:
@@ -785,20 +859,21 @@ class CanvasProvider(_CanvasCatalogProvider):
                 status = CoverageStatus.COMPLETE
             coverage.append(CategoryCoverage(kind, status))
 
-        if RemoteKind.FILE in kinds and RemoteKind.FILE not in failed:
-            self._replace_course_cache(
-                self._file_items, course_id, staged_file_items
-            )
-            self._replace_course_cache(
-                self._file_metadata, course_id, staged_files
-            )
-        if RemoteKind.PAGE in kinds and RemoteKind.PAGE not in failed:
-            self._replace_course_cache(
-                self._page_items, course_id, staged_page_items
-            )
-            self._replace_course_cache(
-                self._page_snapshots, course_id, staged_pages
-            )
+        with self._cache_lock:
+            if RemoteKind.FILE in kinds and RemoteKind.FILE not in failed:
+                self._replace_course_cache(
+                    self._file_items, course_id, staged_file_items
+                )
+                self._replace_course_cache(
+                    self._file_metadata, course_id, staged_files
+                )
+            if RemoteKind.PAGE in kinds and RemoteKind.PAGE not in failed:
+                self._replace_course_cache(
+                    self._page_items, course_id, staged_page_items
+                )
+                self._replace_course_cache(
+                    self._page_snapshots, course_id, staged_pages
+                )
 
         return ContentBatch(
             provider="canvas",

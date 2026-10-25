@@ -215,16 +215,15 @@ keyboard buddies, primary collections have accessible names, checking a course k
 the table focus/current row, and tab order follows each page's task sequence. An explicit
 manual pair takes priority over any overlapping automatic suggestion; removing it makes
 the still-applicable automatic suggestion visible again.
-The next implementation slice adds an optional config-only save capability. When a
-production host injects `ConfigOnlySetupSaver`, the Review page can seal the exact
-already-rendered `SetupPlan`, confirm the profile, configuration path, output root, and
-course/source counts, then create only the missing TOML configuration on a worker
-thread. It does not create the output root or course folders, resolve or write secrets,
-download content, run initial sync, repair launchers, or invoke due/MCP behavior. The
+The setup host injects a reviewed local-save capability. The Review page seals the exact
+already-rendered `SetupPlan`, confirms the profile, configuration path, output root, and
+course/source counts, then creates the missing TOML configuration and any missing empty
+course folders on a worker thread. It never creates the output root, resolves or writes
+secrets, downloads content, runs initial sync, repairs launchers, or invokes due/MCP behavior. The
 save fails closed if the displayed review is stale, replaced, already saved, concurrently
 saving, or if the target configuration now exists; an existing file is never
-overwritten. Success changes the setup window to a completed state instead of showing a
-discard warning.
+overwritten. Existing safe course directories are reused; file/link collisions fail closed.
+If config commit fails, only empty directories created by that attempt are rolled back.
 
 Capability absence remains meaningful: the synthetic 300-course launcher under
 `spikes/` injects no saver, keeps the visible `Preview only` state, and cannot write a
@@ -302,3 +301,61 @@ this slice, so the desktop client is additive and does not remove the recovery p
 
 These decisions require the bounded prototype protocol and measurements in
 `UI_FRAMEWORK_EVIDENCE.md`; absence of evidence is `NOT_RUN`, not approval.
+## 9. CourseHarbor App Shell vertical slice (rc17)
+
+The desktop entry point now opens one PySide6 shell with Library, Due dates, Courses,
+Connections, Health & About, plus a typed Open local library action. The shell remains a
+presentation and lifecycle boundary: sync, credential, due, configuration, and folder
+effects continue to enter through application-layer services rather than CLI output.
+
+The due-date page separates This week and Semester into independent typed scopes. Each
+scope owns its Load action, in-memory snapshot, export directory, and explicit Export
+action. Refresh may update the existing last-good due cache; choosing another directory
+only retargets that scope's snapshot. Semester retargeting preserves completion/manual
+notes from the latest report in that directory. Files remain create-only and are written
+only by the selected scope's Export action.
+
+Courses reads a bounded profile-local sync-report history. A course row expands into
+timestamped apply runs, and each run expands into files added, updated, deduplicated,
+blocked, or failed. Reports contain display metadata, action counts, and contained local
+paths only; credentials, remote payloads, and raw provider exceptions are excluded.
+
+Reviewed discovery uses four-way bounded source concurrency. Canvas uses the Modules
+`include[]=items` response when available, the Course Files index instead of repeated
+per-file metadata calls, and a bounded pool for module-linked Page bodies. Fallbacks
+retain the original provider-isolated behavior when Canvas omits inline items or blocks a
+bulk index. Result ordering remains configuration-stable and apply stays serial.
+
+The existing reviewed Library workspace is currently hosted by a compatibility adapter.
+A later slice should extract it into a first-class `QWidget` page before removing the
+legacy standalone window wrapper. Course reconfiguration also remains a reviewed PySide6
+setup window launched from the Courses page; no terminal workflow is exposed by the shell.
+
+## 10. Desktop startup and profile routing (rc17)
+
+The no-argument GUI entry point now builds a local-only typed `StartupPlan`. No profile
+routes to First run, one healthy profile opens the App Shell, and multiple or unreadable
+profiles route to a Profile chooser. The chooser carries only `ProfileOverview` values;
+it never resolves credentials or contacts a provider. A damaged config is visible but
+cannot be opened or overwritten. **Switch profile** reuses page shutdown boundaries
+before replacing the current window.
+
+The same router is injected through First run into its reviewed Setup window. After a
+successful save, **Open daily dashboard** loads the saved `ProfileOverview` and replaces
+the setup journey in-process. Closing Setup emits one lifecycle result and also closes
+the hidden First-run host, preventing a headless Qt process. Standalone setup omits the
+router injection and preserves the detached App Shell fallback.
+
+When embedded Setup closes without opening the App Shell, the First-run host now asks
+the router to rebuild the Profile chooser before it closes. Profile removal is a typed
+local application operation rather than a Qt file deletion: review binds the exact
+config path and revision, confirmation names the selected profile, and commit moves only
+that config into a private `.removed` archive on the same filesystem. Course libraries,
+native credentials, state, logs/cache, and remote tokens are intentionally retained.
+
+The installed `courseharbor` GUI script removes the normal Windows console for ordinary
+environment installs. The private rc17 PyInstaller onedir prerelease passes automated
+Windows startup, dependency, keyring-backend, inventory, relocation, and owner-visible
+App Shell checks. Packaging evidence and the remaining installer, signing,
+upgrade/uninstall, frozen credential round-trip, and macOS `NOT_RUN` gates are recorded in
+`DESKTOP_STARTUP_AND_PACKAGING.md`.

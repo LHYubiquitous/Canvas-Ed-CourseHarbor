@@ -26,6 +26,85 @@ def response_for(request: httpx.Request, routes: dict[str, httpx.Response]) -> h
 
 
 class CanvasContentProviderTests(unittest.TestCase):
+    def test_bulk_indexes_avoid_per_item_metadata_requests(self) -> None:
+        requests: list[httpx.Request] = []
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            routes = {
+                "/api/v1/courses/1/modules": [
+                    {
+                        "id": 10,
+                        "name": "Week 1",
+                        "items": [
+                            {
+                                "id": 1,
+                                "type": "File",
+                                "content_id": 100,
+                                "url": "/api/v1/files/100",
+                            },
+                            {
+                                "id": 2,
+                                "type": "Page",
+                                "page_url": "intro",
+                                "url": "/api/v1/courses/1/pages/intro",
+                            },
+                        ],
+                    }
+                ],
+                "/api/v1/courses/1/files": [
+                    {
+                        "id": 100,
+                        "display_name": "module.pdf",
+                        "size": 4,
+                        "content-type": "application/pdf",
+                        "updated_at": "2026-10-15T00:00:00Z",
+                        "url": "https://cdn.example.test/module.pdf",
+                    }
+                ],
+                "/api/v1/courses/1/pages/intro": {
+                    "page_id": 200,
+                    "url": "intro",
+                    "title": "Introduction",
+                    "updated_at": "2026-10-15T00:00:00Z",
+                    "body": "<p>Body</p>",
+                },
+            }
+            if request.url.path not in routes:
+                raise AssertionError(f"unexpected request: {request.url.path}")
+            return httpx.Response(200, json=routes[request.url.path])
+
+        provider = CanvasProvider(
+            "https://canvas.example.edu/api/v1",
+            "token",
+            client=httpx.Client(transport=httpx.MockTransport(respond)),
+        )
+        try:
+            batch = provider.list_items(
+                "1", kinds=frozenset({RemoteKind.FILE, RemoteKind.PAGE})
+            )
+        finally:
+            provider.close()
+
+        self.assertEqual(
+            [
+                "/api/v1/courses/1/modules",
+                "/api/v1/courses/1/files",
+                "/api/v1/courses/1/pages/intro",
+            ],
+            [request.url.path for request in requests],
+        )
+        module_query = requests[0].url.params
+        self.assertEqual(["items", "content_details"], module_query.get_list("include[]"))
+        self.assertEqual("100", module_query["per_page"])
+        self.assertEqual(
+            [
+                (RemoteKind.FILE, "100", "Week 1"),
+                (RemoteKind.PAGE, "intro", "Week 1"),
+            ],
+            [(item.key.kind, item.key.remote_id, item.group) for item in batch.items],
+        )
+
     def test_constructor_redacts_signed_queries_from_http_dependency_logs(self) -> None:
         provider = CanvasProvider("https://canvas.example.edu/api/v1", "token")
         try:

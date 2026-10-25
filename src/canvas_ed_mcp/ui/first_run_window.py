@@ -14,12 +14,12 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QTabWidget,
@@ -28,7 +28,17 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from canvas_ed_mcp.application.contracts import OperationStatus, ProgressEvent
+from canvas_ed_mcp.application.contracts import (
+    OperationStatus,
+    ProgressEvent,
+    SecretValue,
+)
+from canvas_ed_mcp.application.credentials import (
+    CredentialController,
+    CredentialOperationResult,
+    CredentialTarget,
+    credential_reference,
+)
 from canvas_ed_mcp.application.first_run import (
     FirstRunControllerResult,
     FirstRunDraft,
@@ -43,6 +53,8 @@ from canvas_ed_mcp.application.profiles import (
 from canvas_ed_mcp.paths import resolve_profile_paths, validate_profile_name
 from canvas_ed_mcp.secrets import resolve_secret
 from canvas_ed_mcp.ui import build_config_saving_setup_window
+from canvas_ed_mcp.ui.branding import DISPLAY_NAME
+from canvas_ed_mcp.ui.components import CollapsibleNotice
 
 
 DiscoveryCallable = Callable[..., CatalogDiscoveryResult]
@@ -99,13 +111,58 @@ class _DiscoveryTask(QRunnable):
         self.signals.finished.emit(self.serial, self.draft.generation, result)
 
 
+class _CredentialSignals(QObject):
+    finished = Signal(int, str, object)
+
+
+class _CredentialTask(QRunnable):
+    def __init__(
+        self,
+        serial: int,
+        target: CredentialTarget,
+        *,
+        controller: CredentialController,
+        value: SecretValue | None,
+        cancellation: _Cancellation,
+    ) -> None:
+        super().__init__()
+        self.serial = serial
+        self.target = target
+        self.controller = controller
+        self.value = value
+        self.cancellation = cancellation
+        self.signals = _CredentialSignals()
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            if self.value is None:
+                result: object = self.controller.test_existing(
+                    self.target,
+                    cancellation=self.cancellation,
+                )
+            else:
+                result = self.controller.save_and_test(
+                    self.target,
+                    self.value,
+                    replace_confirmed=True,
+                    cancellation=self.cancellation,
+                )
+        except Exception:
+            # Never reflect backend/provider exception text or the request object.
+            result = None
+        finally:
+            self.value = None
+        self.signals.finished.emit(self.serial, self.target.provider, result)
+
+
 class _ProfilePage(QWizardPage):
     def __init__(self, owner: "FirstRunWindow") -> None:
         super().__init__()
         self.owner = owner
         self.setTitle("Profile")
         self.setSubTitle(
-            "Choose where this new profile and its local course library belong."
+            "Choose the name for this new local profile."
         )
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -115,24 +172,17 @@ class _ProfilePage(QWizardPage):
         self.profile_form = form
         self.profile_edit = QLineEdit(owner.initial_profile)
         self.profile_edit.setAccessibleName("Profile name")
-        self.output_edit = QLineEdit(str(owner.initial_output_root))
-        self.output_edit.setAccessibleName("Course library location")
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self._browse_output)
-        output_row = QHBoxLayout()
-        output_row.addWidget(self.output_edit, 1)
-        output_row.addWidget(browse)
         self.config_path_label = QLabel()
         self.config_path_label.setWordWrap(True)
         self.config_path_label.setTextInteractionFlags(
             self.config_path_label.textInteractionFlags()
         )
         form.addRow("Profile name", self.profile_edit)
-        form.addRow("Local course library", output_row)
         form.addRow("Configuration file", self.config_path_label)
         layout.addLayout(form)
         note = QLabel(
-            "The configuration must be new. Nothing is created on this page."
+            "The configuration must be new. Choose the Library root and individual "
+            "course folders later on the Folders step."
         )
         note.setWordWrap(True)
         note.setObjectName("notice")
@@ -146,13 +196,6 @@ class _ProfilePage(QWizardPage):
         self.profile_edit.textChanged.connect(self._refresh_config_path)
         self._refresh_config_path()
 
-    def _browse_output(self) -> None:
-        selected = QFileDialog.getExistingDirectory(
-            self, "Choose local course library", self.output_edit.text()
-        )
-        if selected:
-            self.output_edit.setText(selected)
-
     def _refresh_config_path(self) -> None:
         path = self.owner.config_path_for_profile(self.profile_edit.text().strip())
         self.config_path_label.setText(str(path) if path is not None else "Invalid profile")
@@ -161,12 +204,8 @@ class _ProfilePage(QWizardPage):
         profile = self.profile_edit.text().strip()
         try:
             validate_profile_name(profile)
-            output_root = Path(self.output_edit.text().strip()).expanduser()
-            if not output_root.is_absolute():
-                raise ValueError
-            output_root = output_root.resolve(strict=False)
-        except (OSError, RuntimeError, ValueError):
-            self._error("Enter a valid profile name and an absolute course-library path.")
+        except ValueError:
+            self._error("Enter a valid profile name.")
             return False
         config_path = self.owner.config_path_for_profile(profile)
         if config_path is None:
@@ -183,7 +222,6 @@ class _ProfilePage(QWizardPage):
             return False
         self.error_label.hide()
         self.owner.profile = profile
-        self.owner.output_root = output_root
         self.owner.config_path = inspected.config_path
         self.owner.connect_page.apply_profile_defaults(profile)
         return True
@@ -197,127 +235,96 @@ class _ConnectPage(QWizardPage):
     def __init__(self, owner: "FirstRunWindow") -> None:
         super().__init__()
         self.owner = owner
-        self._test_serials = {"canvas": 0, "ed": 0}
-        self._test_generations: dict[str, str] = {}
-        self._test_success_keys: dict[str, tuple[str, ...]] = {}
-        self._test_tasks: dict[str, _DiscoveryTask] = {}
-        self._test_cancellations: dict[str, _Cancellation] = {}
+        self._credential_serials = {"canvas": 0, "ed": 0}
+        self._credential_success_keys: dict[str, tuple[str, ...]] = {}
+        self._credential_operation_keys: dict[str, tuple[str, ...]] = {}
+        self._credential_tasks: dict[str, _CredentialTask] = {}
+        self._credential_cancellations: dict[str, _Cancellation] = {}
+        self.canvas_reference = ""
+        self.ed_reference = ""
         self.setTitle("Connect")
         self.setSubTitle(
-            "Set up and test each service. Disable any service you do not use."
+            "Save and verify tokens securely. Disable any service you do not use."
         )
         layout = QVBoxLayout(self)
 
         self.canvas_group = QGroupBox("Use Canvas")
         self.canvas_group.setCheckable(True)
         self.canvas_group.setChecked(True)
-        canvas_form = QFormLayout(self.canvas_group)
-        canvas_form.setFieldGrowthPolicy(
-            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
-        )
-        canvas_form.setHorizontalSpacing(18)
-        canvas_form.setVerticalSpacing(12)
-        self.canvas_form = canvas_form
-        self.canvas_url_edit = QLineEdit("https://canvas.sydney.edu.au/api/v1")
+        self.canvas_form = QFormLayout(self.canvas_group)
+        self._prepare_form(self.canvas_form)
+        self.canvas_url_edit = QLineEdit()
+        self.canvas_url_edit.setPlaceholderText("https://<your-canvas-host>/api/v1")
         self.canvas_url_edit.setAccessibleName("Canvas API base URL")
-        canvas_token_help = QLabel(
-            "<ul>"
-            "<li>Create a token: Account → Settings → Approved Integrations → New Access Token.</li>"
-            "<li>Copy and run the command below. Paste the token at the Password prompt.</li>"
-            "<li>Click Test. Normally leave Stored token location unchanged.</li>"
-            "</ul>"
+        canvas_help = CollapsibleNotice(
+            summary="How to create a Canvas token",
+            text=(
+                "In your institution's Canvas, open Account → Settings → Approved "
+                "Integrations → New Access Token. CourseHarbor tests it with a read-only "
+                "course-list request before saving it to the native credential store."
+            ),
+            dismissible=False,
+            accessibility_subject="Canvas token instructions",
         )
-        canvas_token_help.setWordWrap(True)
-        self.canvas_setup_command_edit = QLineEdit()
-        self.canvas_setup_command_edit.setReadOnly(True)
-        self.canvas_setup_command_edit.setAccessibleName("Canvas token setup command")
-        self.copy_canvas_command_button = QPushButton("Copy command")
-        self.copy_canvas_command_button.setAccessibleName(
-            "Copy Canvas token setup command"
+        self.canvas_help_notice = canvas_help
+        (
+            self.canvas_token_edit,
+            self.save_canvas_button,
+            self.test_canvas_button,
+            self.cancel_canvas_button,
+            self.canvas_test_status,
+        ) = self._credential_controls("Canvas", "canvas")
+        self.canvas_form.addRow(canvas_help)
+        self.canvas_form.addRow("API base URL", self.canvas_url_edit)
+        self.canvas_form.addRow("API token", self.canvas_token_edit)
+        self.canvas_form.addRow(
+            "",
+            self._action_row(
+                self.save_canvas_button,
+                self.test_canvas_button,
+                self.cancel_canvas_button,
+            ),
         )
-        self.copy_canvas_command_button.clicked.connect(
-            lambda: self._copy_setup_command("Canvas", self.canvas_setup_command_edit)
-        )
-        canvas_command_row = QHBoxLayout()
-        canvas_command_row.addWidget(self.canvas_setup_command_edit, 1)
-        canvas_command_row.addWidget(self.copy_canvas_command_button)
-        self.canvas_copy_status = QLabel()
-        self.canvas_copy_status.setAccessibleName("Canvas command copy status")
-        self.canvas_copy_status.hide()
-        self.canvas_credential_edit = QLineEdit()
-        self.canvas_credential_edit.setAccessibleName("Canvas credential reference")
-        self.test_canvas_button = QPushButton("Test")
-        self.test_canvas_button.setAccessibleName("Test Canvas token")
-        self.test_canvas_button.clicked.connect(
-            lambda: self._start_credential_test("canvas")
-        )
-        canvas_credential_row = QHBoxLayout()
-        canvas_credential_row.addWidget(self.canvas_credential_edit, 1)
-        canvas_credential_row.addWidget(self.test_canvas_button)
-        self.canvas_test_status = QLabel()
-        self.canvas_test_status.setWordWrap(True)
-        self.canvas_test_status.setAccessibleName("Canvas token test status")
-        self.canvas_test_status.hide()
-        canvas_form.addRow(canvas_token_help)
-        canvas_form.addRow("API base URL", self.canvas_url_edit)
-        canvas_form.addRow("Save token command", canvas_command_row)
-        canvas_form.addRow("", self.canvas_copy_status)
-        canvas_form.addRow("Stored token location", canvas_credential_row)
-        canvas_form.addRow("", self.canvas_test_status)
+        self.canvas_form.addRow("", self.canvas_test_status)
 
         self.ed_group = QGroupBox("Use Ed Discussion")
         self.ed_group.setCheckable(True)
         self.ed_group.setChecked(True)
-        ed_form = QFormLayout(self.ed_group)
-        ed_form.setFieldGrowthPolicy(
-            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
-        )
-        ed_form.setHorizontalSpacing(18)
-        ed_form.setVerticalSpacing(12)
-        self.ed_form = ed_form
+        self.ed_form = QFormLayout(self.ed_group)
+        self._prepare_form(self.ed_form)
         region = QLineEdit("global")
         region.setReadOnly(True)
         region.setAccessibleName("Ed region")
-        ed_token_help = QLabel(
-            "<ul>"
-            "<li>Create a token: Ed Settings → API Tokens.</li>"
-            "<li>Copy and run the command below. Paste the token at the Password prompt.</li>"
-            "<li>Click Test. Normally leave Stored token location unchanged.</li>"
-            "</ul>"
+        ed_help = CollapsibleNotice(
+            summary="How to create an Ed token",
+            text=(
+                "Open the API Tokens page for your signed-in Ed region. CourseHarbor "
+                "tests it with a read-only course-list request before saving it to the "
+                "native credential store."
+            ),
+            dismissible=False,
+            accessibility_subject="Ed token instructions",
         )
-        ed_token_help.setWordWrap(True)
-        self.ed_setup_command_edit = QLineEdit()
-        self.ed_setup_command_edit.setReadOnly(True)
-        self.ed_setup_command_edit.setAccessibleName("Ed token setup command")
-        self.copy_ed_command_button = QPushButton("Copy command")
-        self.copy_ed_command_button.setAccessibleName("Copy Ed token setup command")
-        self.copy_ed_command_button.clicked.connect(
-            lambda: self._copy_setup_command("Ed", self.ed_setup_command_edit)
+        self.ed_help_notice = ed_help
+        (
+            self.ed_token_edit,
+            self.save_ed_button,
+            self.test_ed_button,
+            self.cancel_ed_button,
+            self.ed_test_status,
+        ) = self._credential_controls("Ed", "ed")
+        self.ed_form.addRow(ed_help)
+        self.ed_form.addRow("Region", region)
+        self.ed_form.addRow("API token", self.ed_token_edit)
+        self.ed_form.addRow(
+            "",
+            self._action_row(
+                self.save_ed_button,
+                self.test_ed_button,
+                self.cancel_ed_button,
+            ),
         )
-        ed_command_row = QHBoxLayout()
-        ed_command_row.addWidget(self.ed_setup_command_edit, 1)
-        ed_command_row.addWidget(self.copy_ed_command_button)
-        self.ed_copy_status = QLabel()
-        self.ed_copy_status.setAccessibleName("Ed command copy status")
-        self.ed_copy_status.hide()
-        self.ed_credential_edit = QLineEdit()
-        self.ed_credential_edit.setAccessibleName("Ed credential reference")
-        self.test_ed_button = QPushButton("Test")
-        self.test_ed_button.setAccessibleName("Test Ed token")
-        self.test_ed_button.clicked.connect(lambda: self._start_credential_test("ed"))
-        ed_credential_row = QHBoxLayout()
-        ed_credential_row.addWidget(self.ed_credential_edit, 1)
-        ed_credential_row.addWidget(self.test_ed_button)
-        self.ed_test_status = QLabel()
-        self.ed_test_status.setWordWrap(True)
-        self.ed_test_status.setAccessibleName("Ed token test status")
-        self.ed_test_status.hide()
-        ed_form.addRow(ed_token_help)
-        ed_form.addRow("Region", region)
-        ed_form.addRow("Save token command", ed_command_row)
-        ed_form.addRow("", self.ed_copy_status)
-        ed_form.addRow("Stored token location", ed_credential_row)
-        ed_form.addRow("", self.ed_test_status)
+        self.ed_form.addRow("", self.ed_test_status)
 
         self.provider_tabs = QTabWidget()
         self.provider_tabs.setAccessibleName("Canvas and Ed connection settings")
@@ -330,196 +337,294 @@ class _ConnectPage(QWizardPage):
         self.error_label.hide()
         layout.addWidget(self.error_label)
         layout.addStretch(1)
+
         self.apply_profile_defaults(owner.initial_profile)
         self.canvas_url_edit.textChanged.connect(
-            lambda: self._invalidate_credential_test("canvas")
-        )
-        self.canvas_credential_edit.textChanged.connect(
-            lambda: self._invalidate_credential_test("canvas")
-        )
-        self.ed_credential_edit.textChanged.connect(
-            lambda: self._invalidate_credential_test("ed")
+            lambda: self._invalidate_credential_result("canvas")
         )
         self.canvas_group.toggled.connect(
-            lambda: self._invalidate_credential_test("canvas")
+            lambda: self._invalidate_credential_result("canvas")
         )
-        self.ed_group.toggled.connect(lambda: self._invalidate_credential_test("ed"))
-
-    def apply_profile_defaults(self, profile: str) -> None:
-        old_canvas_default = getattr(self, "_canvas_default", "")
-        old_ed_default = getattr(self, "_ed_default", "")
-        new_canvas = f"keyring:canvas-ed-mcp/{profile}/canvas"
-        new_ed = f"keyring:canvas-ed-mcp/{profile}/ed"
-        self.canvas_setup_command_edit.setText(
-            self._keyring_setup_command(profile, "canvas")
+        self.ed_group.toggled.connect(
+            lambda: self._invalidate_credential_result("ed")
         )
-        self.ed_setup_command_edit.setText(self._keyring_setup_command(profile, "ed"))
-        self.canvas_setup_command_edit.setCursorPosition(0)
-        self.ed_setup_command_edit.setCursorPosition(0)
-        if not self.canvas_credential_edit.text() or self.canvas_credential_edit.text() == old_canvas_default:
-            self.canvas_credential_edit.setText(new_canvas)
-        if not self.ed_credential_edit.text() or self.ed_credential_edit.text() == old_ed_default:
-            self.ed_credential_edit.setText(new_ed)
-        self._canvas_default = new_canvas
-        self._ed_default = new_ed
 
     @staticmethod
-    def _keyring_setup_command(profile: str, account: str) -> str:
-        service = f"canvas-ed-mcp/{profile}"
-        if sys.platform == "win32":
-            return f'& "{sys.executable}" -m keyring set {service} {account}'
-        return f'"{sys.executable}" -m keyring set {service} {account}'
+    def _prepare_form(form: QFormLayout) -> None:
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(12)
 
-    def _copy_setup_command(self, provider: str, command_edit: QLineEdit) -> None:
-        QApplication.clipboard().setText(command_edit.text())
-        status = (
-            self.canvas_copy_status
-            if provider.casefold() == "canvas"
-            else self.ed_copy_status
+    def _credential_controls(
+        self, display_name: str, provider: str
+    ) -> tuple[QLineEdit, QPushButton, QPushButton, QPushButton, QLabel]:
+        token_edit = QLineEdit()
+        token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        token_edit.setAccessibleName(f"{display_name} API token")
+        token_edit.setPlaceholderText("Paste token here")
+        save_button = QPushButton("Save and test")
+        save_button.setAccessibleName(f"Save and test {display_name} credential")
+        save_button.clicked.connect(lambda: self._start_credential_save(provider))
+        test_button = QPushButton("Test existing")
+        test_button.setAccessibleName(f"Test existing {display_name} credential")
+        test_button.clicked.connect(lambda: self._start_credential_test(provider))
+        cancel_button = QPushButton("Cancel")
+        cancel_button.setAccessibleName(f"Cancel {display_name} credential operation")
+        cancel_button.clicked.connect(lambda: self._cancel_credential_operation(provider))
+        cancel_button.hide()
+        status = QLabel()
+        status.setWordWrap(True)
+        status.setAccessibleName(f"{display_name} credential status")
+        status.hide()
+        return token_edit, save_button, test_button, cancel_button, status
+
+    @staticmethod
+    def _action_row(*buttons: QPushButton) -> QHBoxLayout:
+        row = QHBoxLayout()
+        for button in buttons:
+            row.addWidget(button)
+        row.addStretch(1)
+        return row
+
+    @property
+    def credential_operations_running(self) -> bool:
+        return bool(self._credential_tasks)
+
+    def apply_profile_defaults(self, profile: str) -> None:
+        self.canvas_reference = credential_reference(profile, "canvas")
+        self.ed_reference = credential_reference(profile, "ed")
+        self.cancel_credential_tests()
+
+    def _target(self, provider: str) -> CredentialTarget:
+        return self.owner.credential_controller.target_for(
+            self.owner.profile,
+            provider,
+            canvas_base_url=(
+                self.canvas_url_edit.text().strip() or None
+                if provider == "canvas"
+                else None
+            ),
+            reference=(
+                self.canvas_reference if provider == "canvas" else self.ed_reference
+            ),
         )
-        status.setText("Command copied.")
-        status.show()
 
-    def _invalidate_credential_test(self, provider: str) -> None:
-        self._test_serials[provider] += 1
-        cancellation = self._test_cancellations.pop(provider, None)
-        if cancellation is not None:
-            cancellation.request()
-        self._test_tasks.pop(provider, None)
-        self._test_generations.pop(provider, None)
-        self._test_success_keys.pop(provider, None)
-        status_label, test_button, copy_button = self._test_widgets(provider)
-        status_label.hide()
-        status_label.clear()
-        test_button.setText("Test")
-        test_button.setEnabled(True)
-        copy_button.setText("Copy command")
+    def _widgets(
+        self, provider: str
+    ) -> tuple[QLineEdit, QPushButton, QPushButton, QPushButton, QLabel]:
+        if provider == "canvas":
+            return (
+                self.canvas_token_edit,
+                self.save_canvas_button,
+                self.test_canvas_button,
+                self.cancel_canvas_button,
+                self.canvas_test_status,
+            )
+        return (
+            self.ed_token_edit,
+            self.save_ed_button,
+            self.test_ed_button,
+            self.cancel_ed_button,
+            self.ed_test_status,
+        )
+
+    def _invalidate_credential_result(self, provider: str) -> None:
+        self._credential_success_keys.pop(provider, None)
+        _, _, _, _, status = self._widgets(provider)
+        status.hide()
+        status.clear()
+
+    def _start_credential_save(self, provider: str) -> None:
+        token_edit, _, _, _, status = self._widgets(provider)
+        raw_value = token_edit.text()
+        if not raw_value:
+            status.setStyleSheet("color: #263B63;")
+            status.setText(
+                "No replacement token was entered. The existing credential was kept; "
+                "use Test existing to verify it."
+            )
+            status.show()
+            return
+        try:
+            value = SecretValue(raw_value)
+        except ValueError:
+            token_edit.clear()
+            self._show_failure(provider, "invalid_credential_value")
+            return
+        if not self.owner.confirm_credential_change(provider, self.owner.profile):
+            token_edit.clear()
+            status.setStyleSheet("color: #263B63;")
+            status.setText("Credential replacement was cancelled. The existing value was kept.")
+            status.show()
+            return
+        token_edit.clear()
+        self._start_credential_operation(provider, value)
+
+    def _start_credential_test(self, provider: str) -> None:
+        self._start_credential_operation(provider, None)
+
+    def _start_credential_operation(
+        self, provider: str, value: SecretValue | None
+    ) -> None:
+        self._cancel_credential_operation(provider, superseded=True)
+        try:
+            target = self._target(provider)
+        except ValueError:
+            self._show_failure(provider, "invalid_connection")
+            return
+        self._credential_success_keys.pop(provider, None)
+        self._credential_serials[provider] += 1
+        serial = self._credential_serials[provider]
+        self._credential_operation_keys[provider] = self._credential_test_key(provider)
+        cancellation = _Cancellation()
+        _, save_button, test_button, cancel_button, status = self._widgets(provider)
+        status.setStyleSheet("color: #263B63;")
+        status.setText(
+            "Testing the new token before saving…"
+            if value is not None
+            else "Testing the existing credential with a read-only request…"
+        )
+        status.show()
+        save_button.setEnabled(False)
+        test_button.setEnabled(False)
+        cancel_button.show()
+        if provider == "canvas":
+            self.canvas_url_edit.setEnabled(False)
+        self.owner.button(QWizard.WizardButton.BackButton).setEnabled(False)
+        self.owner.button(QWizard.WizardButton.NextButton).setEnabled(False)
+        task = _CredentialTask(
+            serial,
+            target,
+            controller=self.owner.credential_controller,
+            value=value,
+            cancellation=cancellation,
+        )
+        task.signals.finished.connect(self._credential_operation_finished)
+        self._credential_tasks[provider] = task
+        self._credential_cancellations[provider] = cancellation
+        QThreadPool.globalInstance().start(task)
+
+    def _cancel_credential_operation(
+        self, provider: str, *, superseded: bool = False
+    ) -> None:
+        cancellation = self._credential_cancellations.get(provider)
+        if cancellation is None:
+            return
+        cancellation.request()
+        if not superseded:
+            _, _, _, cancel_button, status = self._widgets(provider)
+            cancel_button.setEnabled(False)
+            status.setStyleSheet("color: #263B63;")
+            status.setText(
+                "Cancellation requested. The operation will stop at the next safe boundary."
+            )
+            status.show()
 
     def cancel_credential_tests(self) -> None:
         for provider in ("canvas", "ed"):
-            self._test_serials[provider] += 1
-            cancellation = self._test_cancellations.pop(provider, None)
+            token_edit, save_button, test_button, cancel_button, _ = self._widgets(provider)
+            token_edit.clear()
+            self._credential_serials[provider] += 1
+            cancellation = self._credential_cancellations.pop(provider, None)
             if cancellation is not None:
                 cancellation.request()
-            self._test_tasks.pop(provider, None)
-            self._test_generations.pop(provider, None)
-            _, test_button, _ = self._test_widgets(provider)
-            test_button.setText("Test")
+            self._credential_tasks.pop(provider, None)
+            self._credential_operation_keys.pop(provider, None)
+            save_button.setEnabled(True)
             test_button.setEnabled(True)
+            cancel_button.setEnabled(True)
+            cancel_button.hide()
+        self.canvas_url_edit.setEnabled(True)
+        self.owner.button(QWizard.WizardButton.BackButton).setEnabled(True)
+        self.owner.button(QWizard.WizardButton.NextButton).setEnabled(True)
 
-    def _start_credential_test(self, provider: str) -> None:
-        self._invalidate_credential_test(provider)
-        prepared = prepare_first_run(
-            profile=self.owner.profile,
-            output_root=self.owner.output_root,
-            config_path=self.owner.config_path,
-            canvas_enabled=provider == "canvas",
-            canvas_base_url=self.canvas_url_edit.text().strip() or None,
-            canvas_credential=self.canvas_credential_edit.text().strip() or None,
-            ed_enabled=provider == "ed",
-            ed_credential=self.ed_credential_edit.text().strip() or None,
-        )
-        if prepared.status is not OperationStatus.SUCCEEDED or prepared.draft is None:
-            self._credential_test_failed(provider)
-            return
-        serial = self._test_serials[provider]
-        cancellation = _Cancellation()
-        status_label, test_button, _ = self._test_widgets(provider)
-        status_label.setStyleSheet("color: #263B63;")
-        status_label.setText("Testing the stored token and reading courses…")
-        status_label.show()
-        test_button.setText("Testing…")
-        test_button.setEnabled(False)
-        task = _DiscoveryTask(
-            serial,
-            prepared.draft,
-            discoverer=self.owner.discoverer,
-            secret_resolver=self.owner.secret_resolver,
-            cancellation=cancellation,
-        )
-        task.signals.finished.connect(
-            lambda result_serial, generation, value, selected=provider: (
-                self._credential_test_finished(
-                    selected, result_serial, generation, value
-                )
-            )
-        )
-        self._test_generations[provider] = prepared.draft.generation
-        self._test_cancellations[provider] = cancellation
-        self._test_tasks[provider] = task
-        QThreadPool.globalInstance().start(task)
+    def request_credential_shutdown(self) -> None:
+        self.clear_token_inputs()
+        for provider in tuple(self._credential_tasks):
+            self._cancel_credential_operation(provider)
 
-    def _credential_test_finished(
-        self, provider: str, serial: int, generation: str, value: object
+    def clear_token_inputs(self) -> None:
+        self.canvas_token_edit.clear()
+        self.ed_token_edit.clear()
+
+    @Slot(int, str, object)
+    def _credential_operation_finished(
+        self, serial: int, provider: str, value: object
     ) -> None:
-        if (
-            serial != self._test_serials[provider]
-            or generation != self._test_generations.get(provider)
-        ):
+        if serial != self._credential_serials[provider]:
             return
-        self._test_tasks.pop(provider, None)
-        self._test_cancellations.pop(provider, None)
-        _, test_button, _ = self._test_widgets(provider)
-        test_button.setText("Test")
+        self._credential_tasks.pop(provider, None)
+        self._credential_cancellations.pop(provider, None)
+        operation_key = self._credential_operation_keys.pop(provider, None)
+        _, save_button, test_button, cancel_button, status = self._widgets(provider)
+        save_button.setEnabled(True)
         test_button.setEnabled(True)
-        if not isinstance(value, CatalogDiscoveryResult):
-            self._credential_test_failed(provider)
-            return
-        result = next(
-            (item for item in value.providers if item.provider == provider), None
-        )
-        if result is None or result.status is OperationStatus.FAILED:
-            self._credential_test_failed(provider)
-            return
-        status_label, _, copy_button = self._test_widgets(provider)
-        count = len(result.courses)
-        noun = "course" if count == 1 else "courses"
-        warning = (
-            " Provider warnings were reported."
-            if result.status is OperationStatus.PARTIAL
-            else ""
-        )
-        status_label.setStyleSheet("color: #155724; font-weight: 600;")
-        status_label.setText(
-            f"Connected successfully — {count} {noun} found.{warning}"
-        )
-        status_label.show()
-        copy_button.setText("Copy command")
-        self._test_success_keys[provider] = self._credential_test_key(provider)
-
-    def _credential_test_failed(self, provider: str) -> None:
-        self._test_success_keys.pop(provider, None)
-        status_label, test_button, copy_button = self._test_widgets(provider)
-        test_button.setText("Test")
-        test_button.setEnabled(True)
-        copy_button.setText("Copy reset command")
-        status_label.setStyleSheet("color: #7A1E1E; font-weight: 600;")
-        status_label.setText(
-            "Token test failed. Copy and rerun the Save token command above, paste a "
-            "fresh token at the Password prompt, then test again."
-        )
-        status_label.show()
-
-    def _test_widgets(
-        self, provider: str
-    ) -> tuple[QLabel, QPushButton, QPushButton]:
+        cancel_button.setEnabled(True)
+        cancel_button.hide()
         if provider == "canvas":
-            return (
-                self.canvas_test_status,
-                self.test_canvas_button,
-                self.copy_canvas_command_button,
-            )
-        return self.ed_test_status, self.test_ed_button, self.copy_ed_command_button
+            self.canvas_url_edit.setEnabled(True)
+        if not self._credential_tasks:
+            self.owner.button(QWizard.WizardButton.BackButton).setEnabled(True)
+            self.owner.button(QWizard.WizardButton.NextButton).setEnabled(True)
+        if operation_key != self._credential_test_key(provider):
+            self._show_failure(provider, "connection_settings_changed")
+            return
+        if not isinstance(value, CredentialOperationResult):
+            self._show_failure(provider, "credential_operation_failed")
+            return
+        if value.status is OperationStatus.CANCELLED:
+            self._credential_success_keys.pop(provider, None)
+            status.setStyleSheet("color: #263B63;")
+            status.setText("Credential operation cancelled. No new value was saved.")
+            status.show()
+            return
+        if value.status is not OperationStatus.SUCCEEDED or not value.verified:
+            code = value.issues[0].code if value.issues else "credential_operation_failed"
+            self._show_failure(provider, code)
+            return
+        count = value.course_count or 0
+        noun = "course" if count == 1 else "courses"
+        suffix = " Credential saved securely." if value.persisted else " Existing credential works."
+        status.setStyleSheet("color: #155724; font-weight: 600;")
+        status.setText(f"Connected successfully — {count} {noun} found.{suffix}")
+        status.show()
+        save_button.setText("Replace credential…")
+        self._credential_success_keys[provider] = self._credential_test_key(provider)
+
+    def _show_failure(self, provider: str, code: str) -> None:
+        self._credential_success_keys.pop(provider, None)
+        _, _, _, _, status = self._widgets(provider)
+        message = {
+            "authentication_failed": "Authentication failed. Enter a fresh token and try again.",
+            "authorization_failed": "The token is valid but lacks access to the requested courses.",
+            "request_failed": "The provider could not be reached. Check the connection and retry.",
+            "missing_keyring": "No stored credential was found. Enter a token, then choose Save and test.",
+            "missing_env": "The externally managed credential is not available.",
+            "unsafe_backend": "A secure native credential store is unavailable; no provider request was sent.",
+            "missing_dependency": "Native credential-store support is not installed; no provider request was sent.",
+            "backend_error": "The native credential store could not be accessed; no provider request was sent.",
+            "credential_state_unknown": "The token was verified, but the credential-store write failed. Use Test existing to diagnose its state.",
+            "replacement_confirmation_required": "Confirm the targeted credential replacement before retrying.",
+            "invalid_connection": "Enter a valid HTTPS Canvas API base URL before testing.",
+            "connection_settings_changed": "Connection settings changed during the test. Run the credential test again.",
+            "invalid_credential_value": "Enter a non-empty token without control characters.",
+        }.get(code, "The credential could not be verified safely. Check the settings and retry.")
+        status.setStyleSheet("color: #7A1E1E; font-weight: 600;")
+        status.setText(message)
+        status.show()
 
     def _credential_test_key(self, provider: str) -> tuple[str, ...]:
         if provider == "canvas":
-            return (
-                self.canvas_url_edit.text().strip(),
-                self.canvas_credential_edit.text().strip(),
-            )
-        return (self.ed_credential_edit.text().strip(),)
+            return (self.canvas_url_edit.text().strip(), self.canvas_reference)
+        return (self.ed_reference,)
 
     def validatePage(self) -> bool:
+        if self.credential_operations_running:
+            self.error_label.setText(
+                "Wait for the credential operation to finish, or cancel it before continuing."
+            )
+            self.error_label.show()
+            return False
         enabled = (
             ("canvas", self.canvas_group.isChecked()),
             ("ed", self.ed_group.isChecked()),
@@ -527,17 +632,23 @@ class _ConnectPage(QWizardPage):
         for provider, is_enabled in enabled:
             if not is_enabled:
                 continue
-            if self._test_success_keys.get(provider) == self._credential_test_key(
-                provider
-            ):
+            token_edit, _, _, _, status = self._widgets(provider)
+            if token_edit.text():
+                status.setStyleSheet("color: #7A1E1E; font-weight: 600;")
+                status.setText(
+                    "A token is still in the replacement field. Choose Save and test, "
+                    "or clear it to keep the existing credential."
+                )
+                status.show()
+                self.provider_tabs.setCurrentIndex(0 if provider == "canvas" else 1)
+                return False
+            if self._credential_success_keys.get(provider) == self._credential_test_key(provider):
                 continue
-            status_label, _, copy_button = self._test_widgets(provider)
-            status_label.setStyleSheet("color: #7A1E1E; font-weight: 600;")
-            status_label.setText(
+            status.setStyleSheet("color: #7A1E1E; font-weight: 600;")
+            status.setText(
                 f"Test the {provider.title()} token successfully before continuing."
             )
-            status_label.show()
-            copy_button.setText("Copy reset command")
+            status.show()
             self.provider_tabs.setCurrentIndex(0 if provider == "canvas" else 1)
             return False
         prepared = prepare_first_run(
@@ -546,18 +657,15 @@ class _ConnectPage(QWizardPage):
             config_path=self.owner.config_path,
             canvas_enabled=self.canvas_group.isChecked(),
             canvas_base_url=self.canvas_url_edit.text().strip() or None,
-            canvas_credential=self.canvas_credential_edit.text().strip() or None,
+            canvas_credential=self.canvas_reference,
             ed_enabled=self.ed_group.isChecked(),
-            ed_credential=self.ed_credential_edit.text().strip() or None,
+            ed_credential=self.ed_reference,
         )
         if prepared.status is not OperationStatus.SUCCEEDED or prepared.draft is None:
             code = prepared.issues[0].code if prepared.issues else "invalid_connection"
             message = {
                 "config_exists": "This configuration now exists; nothing will be overwritten.",
                 "no_provider_selected": "Enable Canvas, Ed, or both.",
-                "invalid_credential_reference": (
-                    "Use an env:VARIABLE_NAME or keyring:service/account credential reference."
-                ),
                 "invalid_canvas_settings": "Enter a valid HTTPS Canvas API base URL.",
                 "invalid_ed_settings": "The Ed connection settings are invalid.",
             }.get(code, "The connection settings could not be validated safely.")
@@ -620,6 +728,10 @@ class FirstRunWindow(QWizard):
         output_root: Path | None = None,
         discoverer: DiscoveryCallable = discover_course_catalogs,
         secret_resolver: Callable[[str], str] = resolve_secret,
+        credential_controller: CredentialController | None = None,
+        credential_confirmation: Callable[[str, str], bool] | None = None,
+        dashboard_opener: Callable[[str, Path], bool] | None = None,
+        profile_chooser_opener: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
         self.initial_profile = profile
@@ -632,6 +744,15 @@ class FirstRunWindow(QWizard):
         self.output_root = self.initial_output_root
         self.discoverer = discoverer
         self.secret_resolver = secret_resolver
+        self.credential_controller = credential_controller or CredentialController()
+        self._dashboard_opener = dashboard_opener
+        self._profile_chooser_opener = profile_chooser_opener
+        self._setup_destination_opened = False
+        self._setup_close_handled = False
+        self._profile_chooser_returned = False
+        self._credential_confirmation = (
+            credential_confirmation or self._default_credential_confirmation
+        )
         self.draft: FirstRunDraft | None = None
         self.discovery_result: CatalogDiscoveryResult | None = None
         self.controller_result: FirstRunControllerResult | None = None
@@ -641,7 +762,7 @@ class FirstRunWindow(QWizard):
         self._discovery_task: _DiscoveryTask | None = None
         self._setup_window: Any | None = None
 
-        self.setWindowTitle("Set up Canvas & Ed")
+        self.setWindowTitle(f"{DISPLAY_NAME} — Set up")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
         self.resize(900, 650)
@@ -656,6 +777,24 @@ class FirstRunWindow(QWizard):
         self.setButtonText(QWizard.WizardButton.FinishButton, "Open course selection")
         self.currentIdChanged.connect(self._page_changed)
         self._apply_style()
+
+    def confirm_credential_change(self, provider: str, profile: str) -> bool:
+        return bool(self._credential_confirmation(provider, profile))
+
+    def _default_credential_confirmation(self, provider: str, profile: str) -> bool:
+        display_name = "Canvas" if provider == "canvas" else "Ed"
+        reference = credential_reference(profile, provider)
+        selected = QMessageBox.question(
+            self,
+            f"Save {display_name} credential?",
+            f"Profile: {profile}\nProvider: {display_name}\nLocal target: {reference}\n\n"
+            "The token will be tested with a read-only request first. If a local "
+            "credential already exists at this target, a successful test will replace it. "
+            "This does not create or revoke a remote token.",
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return selected == QMessageBox.StandardButton.Save
 
     def config_path_for_profile(self, profile: str) -> Path | None:
         try:
@@ -835,25 +974,80 @@ class FirstRunWindow(QWizard):
             or self.draft is None
         ):
             return
+        embedded_dashboard_opener = (
+            self._open_embedded_dashboard
+            if self._dashboard_opener is not None
+            else None
+        )
         self._setup_window = build_config_saving_setup_window(
             self.controller_result.controller,
             self.draft.config_path,
+            dashboard_opener=embedded_dashboard_opener,
         )
+        self._setup_window.windowClosed.connect(self._setup_closed)
         self._setup_window.show()
         self._setup_window.raise_()
         self.hide()
 
+    def _open_embedded_dashboard(self, profile: str, config_path: Path) -> bool:
+        if self._dashboard_opener is None:
+            return False
+        # The application router closes this hidden wizard while replacing it
+        # with the dashboard. Mark the handoff before invoking the router so
+        # that the wizard's close event cannot reopen the profile chooser.
+        self._setup_destination_opened = True
+        try:
+            opened = bool(self._dashboard_opener(profile, config_path))
+        except Exception:
+            self._setup_destination_opened = False
+            raise
+        if not opened:
+            self._setup_destination_opened = False
+        return opened
+
+    def _return_to_profile_chooser(self) -> None:
+        if (
+            self._profile_chooser_returned
+            or self._setup_destination_opened
+            or self._profile_chooser_opener is None
+        ):
+            return
+        self._profile_chooser_returned = True
+        try:
+            self._profile_chooser_opener()
+        except Exception:
+            self._profile_chooser_returned = False
+            raise
+
+    def _setup_closed(self, _saved: bool) -> None:
+        if self._setup_close_handled:
+            return
+        self._setup_close_handled = True
+        self._return_to_profile_chooser()
+        self.close()
+
     def reject(self) -> None:
+        self.connect_page.clear_token_inputs()
         if self._discovery_running:
             self.cancel_discovery()
             return
+        if self.connect_page.credential_operations_running:
+            self.connect_page.request_credential_shutdown()
+            return
+        self._return_to_profile_chooser()
         super().reject()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self.connect_page.clear_token_inputs()
         if self._discovery_running:
             self.cancel_discovery()
             event.ignore()
             return
+        if self.connect_page.credential_operations_running:
+            self.connect_page.request_credential_shutdown()
+            event.ignore()
+            return
+        self._return_to_profile_chooser()
         super().closeEvent(event)
 
     def _apply_style(self) -> None:
@@ -866,8 +1060,11 @@ class FirstRunWindow(QWizard):
             QGroupBox { background: white; border: 1px solid #DDE4F0; border-radius: 7px; margin-top: 10px; padding-top: 10px; font-weight: 650; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
             QGroupBox::indicator { width: 16px; height: 16px; border: 2px solid #65758B; border-radius: 3px; background: white; }
-            QGroupBox::indicator:checked { background: #2F6FED; border-color: #174EA6; }
-            QTabWidget::pane { border: 1px solid #C7D0DE; border-radius: 6px; background: #F6F8FB; }
+            QGroupBox::indicator:checked {
+                background: #E7F0FF; border-color: #174EA6;
+                image: url(:/qt-project.org/styles/commonstyle/images/standardbutton-apply-16.png);
+            }
+            QTabWidget::pane { border: 1px solid #C7D0DE; border-radius: 6px; background: #F6F8FB; padding-top: 12px; }
             QTabBar::tab { min-width: 120px; padding: 9px 18px; background: #E7ECF4; border: 1px solid #C7D0DE; }
             QTabBar::tab:selected { background: white; color: #174EA6; font-weight: 650; }
             QPushButton { min-height: 30px; padding: 2px 14px; background: white; border: 1px solid #B8C3D3; border-radius: 5px; }
@@ -875,18 +1072,25 @@ class FirstRunWindow(QWizard):
             QPushButton:focus { border: 2px solid #174EA6; background: #EDF3FF; }
             QPushButton:disabled { color: #9AA3B2; background: #EEF1F5; border-color: #D8DEE8; }
             QLabel#notice { color: #263B63; background: #E7F0FF; border: 1px solid #9EBBEA; border-radius: 5px; padding: 9px; }
+            QFrame#collapsible_notice { color: #263B63; background: #F3F7FF; border: 1px solid #C9D8F3; border-radius: 5px; }
+            QFrame#collapsible_notice QLabel#notice_summary { color: #263B63; font-weight: 650; }
+            QFrame#collapsible_notice QLabel#notice_details { color: #4D5E78; }
+            QFrame#collapsible_notice QPushButton#notice_toggle_button { min-height: 24px; padding: 1px 8px; color: #214FA7; background: transparent; border: none; font-weight: 650; }
             QLabel#error { color: #7A1E1E; background: #FDE8E7; border: 1px solid #E8AAA6; border-radius: 5px; padding: 9px; }
             """
         )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Canvas & Ed first-run setup")
+    from .icon import apply_application_icon
+
+    parser = argparse.ArgumentParser(description=f"{DISPLAY_NAME} first-run setup")
     parser.add_argument("--profile", default="default")
     parser.add_argument("--config", type=Path)
     parser.add_argument("--output-root", type=Path)
     args = parser.parse_args(argv)
     application = QApplication.instance() or QApplication(sys.argv)
+    apply_application_icon(application)
     window = FirstRunWindow(
         profile=args.profile,
         config_path=args.config,

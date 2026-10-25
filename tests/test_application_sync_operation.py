@@ -220,6 +220,18 @@ class ApplicationSyncOperationTests(unittest.TestCase):
             self.assertEqual(1, provider.list_calls)
             self.assertEqual(1, provider.binary_calls)
             self.assertEqual(1, provider.close_calls)
+            self.assertEqual(1, len(applied.sources[0].items))
+            item = applied.sources[0].items[0]
+            self.assertEqual("notes.pdf", item.display_name)
+            self.assertEqual("resource", item.kind)
+            self.assertEqual("install_new", item.action)
+            self.assertIsNotNone(item.destination)
+            assert item.destination is not None
+            self.assertTrue(item.destination.is_absolute())
+            self.assertTrue(item.destination.is_file())
+            self.assertTrue(
+                item.destination.is_relative_to((root / "COMP0001").resolve())
+            )
             self.assertEqual(["keyring:canvas-ed-mcp/test/ed"], resolved)
             self.assertEqual(
                 [
@@ -406,7 +418,7 @@ class ApplicationSyncOperationTests(unittest.TestCase):
             self.assertFalse((target_a / "state.json").exists())
             self.assertFalse((target_b / "state.json").exists())
 
-    def test_preview_cancels_between_source_discoveries_and_closes_lease(self) -> None:
+    def test_preview_cancels_concurrent_discovery_and_closes_lease(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             provider = _Provider()
@@ -423,7 +435,8 @@ class ApplicationSyncOperationTests(unittest.TestCase):
             )
 
             self.assertEqual(OperationStatus.CANCELLED, preview.status)
-            self.assertEqual(1, provider.list_calls)
+            self.assertGreaterEqual(provider.list_calls, 1)
+            self.assertLessEqual(provider.list_calls, 2)
             self.assertEqual(0, provider.binary_calls)
             self.assertEqual(1, provider.close_calls)
             self.assertFalse(paths.state_file.exists())

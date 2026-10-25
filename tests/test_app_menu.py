@@ -19,7 +19,7 @@ class AppMenuTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertEqual(["week"], calls)
         rendered = output.getvalue()
-        self.assertIn("Canvas Ed MCP", rendered)
+        self.assertIn("CourseHarbor", rendered)
         self.assertIn("This week's due", rendered)
         self.assertIn("0. Exit", rendered)
 

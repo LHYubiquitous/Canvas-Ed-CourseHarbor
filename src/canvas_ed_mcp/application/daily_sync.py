@@ -73,6 +73,24 @@ class SyncPreviewRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class SyncItemSummary:
+    """Non-secret per-item outcome suitable for sync reports."""
+
+    display_name: str
+    kind: str
+    action: str
+    reason: str
+    destination: Path | None = None
+
+    def __post_init__(self) -> None:
+        for field_name in ("display_name", "kind", "action", "reason"):
+            _safe_text(getattr(self, field_name), field_name)
+        if self.destination is not None:
+            if not isinstance(self.destination, Path) or not self.destination.is_absolute():
+                raise ValueError("destination must be an absolute Path or None")
+
+
+@dataclass(frozen=True, slots=True)
 class SyncSourceSummary:
     course_key: str
     provider: str
@@ -84,6 +102,7 @@ class SyncSourceSummary:
     course_code: str | None = None
     course_name: str | None = None
     course_term: str | None = None
+    items: tuple[SyncItemSummary, ...] = ()
 
     def __post_init__(self) -> None:
         _safe_text(self.course_key, "course_key")
@@ -102,6 +121,10 @@ class SyncSourceSummary:
             value = getattr(self, field_name)
             if value is not None:
                 _safe_text(value, field_name)
+        if not isinstance(self.items, tuple) or not all(
+            isinstance(item, SyncItemSummary) for item in self.items
+        ):
+            raise ValueError("items must contain SyncItemSummary values")
 
     @property
     def course_display_name(self) -> str:
@@ -407,6 +430,7 @@ __all__ = [
     "DailySyncState",
     "ProgressCallback",
     "SyncApplyResult",
+    "SyncItemSummary",
     "SyncOperationPort",
     "SyncPreviewRequest",
     "SyncPreviewResult",

@@ -184,6 +184,49 @@ class SetupController:
         return self._session.defaults
 
     @property
+    def output_root(self) -> Path:
+        """Return the reviewed local course-library root."""
+
+        return self._session.output_root
+
+    @property
+    def output_root_editable(self) -> bool:
+        return True
+
+    def library_root_for_selected_directory(self, selected_directory: Path) -> Path:
+        """Validate an existing directory selected as the new library root."""
+
+        if not isinstance(selected_directory, Path) or not selected_directory.is_absolute():
+            raise ValueError("Choose an absolute existing folder as the Library root.")
+        try:
+            selected = selected_directory.resolve(strict=True)
+        except (OSError, RuntimeError):
+            raise ValueError("Choose an existing folder as the Library root.") from None
+        if not selected.is_dir():
+            raise ValueError("Choose an existing folder as the Library root.")
+        return selected
+
+    def set_output_root(self, output_root: Path) -> bool:
+        return self._session.set_output_root(output_root)
+
+    def folder_name_for_selected_directory(self, selected_directory: Path) -> str:
+        """Validate a picker result and return its portable course-folder name."""
+
+        if not isinstance(selected_directory, Path) or not selected_directory.is_absolute():
+            raise ValueError("Choose an absolute existing folder.")
+        try:
+            selected = self.library_root_for_selected_directory(selected_directory)
+            output_root = self.output_root.resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            raise ValueError("Choose an existing folder in the Library root.") from None
+        if selected.parent != output_root:
+            raise ValueError(
+                "Choose a folder directly inside the Library root shown above, "
+                "or change the Library root first."
+            )
+        return CourseOverride(folder=selected.name).folder or selected.name
+
+    @property
     def visible_rows(self) -> tuple[CatalogRow, ...]:
         rows = list(self._session.visible_rows(self._filters))
         rows.sort(
@@ -528,6 +571,8 @@ class SetupController:
     def build_review(self) -> SetupReview:
         if self._step is not SetupStep.FOLDERS:
             raise ValueError("review is available after folder settings")
+        if self.output_root_editable:
+            self.library_root_for_selected_directory(self.output_root)
         self._review = self._session.build_review()
         self._step = SetupStep.REVIEW
         return self._review

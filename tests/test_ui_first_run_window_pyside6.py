@@ -8,22 +8,104 @@ from pathlib import Path
 
 try:
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFormLayout
+    from PySide6.QtWidgets import QApplication, QFormLayout, QLineEdit
 except ImportError:  # pragma: no cover - optional desktop dependency.
     QTest = None  # type: ignore[assignment]
     QApplication = None  # type: ignore[assignment]
     QFormLayout = None  # type: ignore[assignment]
+    QLineEdit = None  # type: ignore[assignment]
 
 from canvas_ed_mcp.application.contracts import (
     ApplicationIssue,
     IssueSeverity,
     OperationStatus,
+    SecretValue,
+)
+from canvas_ed_mcp.application.credentials import (
+    CredentialOperationResult,
+    CredentialTarget,
+    credential_reference,
 )
 from canvas_ed_mcp.application.profiles import (
     CatalogDiscoveryResult,
     ProviderCatalogResult,
 )
 from canvas_ed_mcp.providers.base import CourseCandidate
+
+
+class _FakeCredentialController:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, int | None, bool | None]] = []
+        self.failed_providers: set[str] = set()
+
+    def target_for(
+        self,
+        profile: str,
+        provider: str,
+        *,
+        canvas_base_url: str | None = None,
+        reference: str | None = None,
+    ) -> CredentialTarget:
+        return CredentialTarget(
+            profile,
+            provider,
+            reference or credential_reference(profile, provider),
+            canvas_base_url,
+        )
+
+    def test_existing(self, target, *, cancellation, progress=None):
+        self.calls.append(("test_existing", target.provider, None, None))
+        if target.provider in self.failed_providers:
+            return CredentialOperationResult(
+                OperationStatus.FAILED,
+                target.provider,
+                issues=(
+                    ApplicationIssue(
+                        "authentication_failed",
+                        IssueSeverity.ERROR,
+                        provider=target.provider,
+                    ),
+                ),
+            )
+        return CredentialOperationResult(
+            OperationStatus.SUCCEEDED,
+            target.provider,
+            verified=True,
+            course_count=1,
+        )
+
+    def save_and_test(
+        self,
+        target,
+        value,
+        *,
+        replace_confirmed=False,
+        cancellation,
+        progress=None,
+    ):
+        assert isinstance(value, SecretValue)
+        self.calls.append(
+            ("save_and_test", target.provider, len(value.value), replace_confirmed)
+        )
+        if target.provider in self.failed_providers:
+            return CredentialOperationResult(
+                OperationStatus.FAILED,
+                target.provider,
+                issues=(
+                    ApplicationIssue(
+                        "authentication_failed",
+                        IssueSeverity.ERROR,
+                        provider=target.provider,
+                    ),
+                ),
+            )
+        return CredentialOperationResult(
+            OperationStatus.SUCCEEDED,
+            target.provider,
+            verified=True,
+            persisted=True,
+            course_count=1,
+        )
 
 
 def _windows_gui_available() -> bool:
@@ -50,11 +132,13 @@ class FirstRunWindowTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.config_path = self.root / "profiles" / "default.toml"
         self.calls = 0
+        self.credential_controller = _FakeCredentialController()
 
     def tearDown(self) -> None:
         if hasattr(self, "window"):
             child = getattr(self.window, "_setup_window", None)
             if child is not None:
+                child.hide()
                 child.close()
             self.window.close()
         self.application.processEvents()
@@ -94,19 +178,32 @@ class FirstRunWindowTests(unittest.TestCase):
             ),
         )
 
-    def _open_discover(self, discoverer=None) -> None:
+    def _open_discover(
+        self,
+        discoverer=None,
+        *,
+        dashboard_opener=None,
+        profile_chooser_opener=None,
+    ) -> None:
         actual_discoverer = discoverer or self._success
         self.window = self.FirstRunWindow(
             config_path=self.config_path,
             output_root=self.root / "Courses",
             discoverer=self._success,
             secret_resolver=lambda reference: "synthetic-provider-token",
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
+            dashboard_opener=dashboard_opener,
+            profile_chooser_opener=profile_chooser_opener,
         )
         self.window.show()
         self.application.processEvents()
         self.assertTrue(self.window.profile_page.validatePage())
         self.window.next()
         self.assertEqual(1, self.window.currentId())
+        self.window.connect_page.canvas_url_edit.setText(
+            "https://canvas.example.edu/api/v1"
+        )
         for button in (
             self.window.connect_page.test_canvas_button,
             self.window.connect_page.test_ed_button,
@@ -137,6 +234,8 @@ class FirstRunWindowTests(unittest.TestCase):
             output_root=self.root / "Courses",
             discoverer=self._success,
             secret_resolver=lambda reference: self.fail("secret was resolved"),
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
         )
 
         self.assertFalse(self.window.profile_page.validatePage())
@@ -144,11 +243,13 @@ class FirstRunWindowTests(unittest.TestCase):
         self.assertEqual(0, self.calls)
         self.assertEqual(original, self.config_path.read_bytes())
 
-    def test_connect_page_explains_and_copies_profile_specific_commands(self) -> None:
+    def test_connect_page_uses_masked_transient_inputs_without_clipboard_leak(self) -> None:
         self.window = self.FirstRunWindow(
             config_path=self.config_path,
             output_root=self.root / "Courses",
             discoverer=self._success,
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
         )
         page = self.window.connect_page
 
@@ -162,39 +263,74 @@ class FirstRunWindowTests(unittest.TestCase):
         self.assertEqual(2, page.provider_tabs.count())
         self.assertEqual("Canvas", page.provider_tabs.tabText(0))
         self.assertEqual("Ed", page.provider_tabs.tabText(1))
-        self.assertTrue(page.canvas_setup_command_edit.isReadOnly())
-        self.assertTrue(page.ed_setup_command_edit.isReadOnly())
-        self.assertEqual(0, page.canvas_setup_command_edit.cursorPosition())
-        self.assertEqual(0, page.ed_setup_command_edit.cursorPosition())
-        self.assertIn(
-            "keyring set canvas-ed-mcp/default canvas",
-            page.canvas_setup_command_edit.text(),
-        )
-        self.assertIn(
-            "keyring set canvas-ed-mcp/default ed",
-            page.ed_setup_command_edit.text(),
+        self.assertEqual(QLineEdit.EchoMode.Password, page.canvas_token_edit.echoMode())
+        self.assertEqual(QLineEdit.EchoMode.Password, page.ed_token_edit.echoMode())
+        self.assertEqual(
+            "https://<your-canvas-host>/api/v1",
+            page.canvas_url_edit.placeholderText(),
         )
         self.assertEqual(
-            "keyring:canvas-ed-mcp/default/canvas",
-            page.canvas_credential_edit.text(),
+            "keyring:canvas-ed-mcp/default/canvas", page.canvas_reference
         )
 
-        page.copy_canvas_command_button.click()
-        self.application.processEvents()
-        self.assertEqual(
-            page.canvas_setup_command_edit.text(), self.application.clipboard().text()
-        )
-        self.assertEqual("Command copied.", page.canvas_copy_status.text())
+        canary = "SYNTHETIC_UI_TOKEN_CANARY"
+        self.application.clipboard().setText("clipboard-sentinel")
+        page.canvas_url_edit.setText("https://canvas.example.edu/api/v1")
+        page.canvas_token_edit.setText(canary)
+        page.save_canvas_button.click()
+        self.assertEqual("", page.canvas_token_edit.text())
+        for _ in range(200):
+            self.application.processEvents()
+            if not page.credential_operations_running:
+                break
+            QTest.qWait(5)
+
+        self.assertIn(("save_and_test", "canvas", len(canary), True), self.credential_controller.calls)
+        self.assertEqual("clipboard-sentinel", self.application.clipboard().text())
+        visible = self.window.findChildren(type(page.canvas_test_status))
+        self.assertNotIn(canary, " ".join(widget.text() for widget in visible))
+        self.assertNotIn(canary, page.canvas_token_edit.accessibleName())
+        self.assertNotIn(canary, page.canvas_token_edit.accessibleDescription())
+        self.assertIn("saved", page.canvas_test_status.text().casefold())
 
         page.apply_profile_defaults("semester-2")
-        self.assertIn(
-            "keyring set canvas-ed-mcp/semester-2 canvas",
-            page.canvas_setup_command_edit.text(),
-        )
         self.assertEqual(
-            "keyring:canvas-ed-mcp/semester-2/ed",
-            page.ed_credential_edit.text(),
+            "keyring:canvas-ed-mcp/semester-2/ed", page.ed_reference
         )
+
+    def test_connect_provider_cards_have_checkbox_glyph_and_tab_spacing(self) -> None:
+        self.window = self.FirstRunWindow(
+            config_path=self.config_path,
+            output_root=self.root / "Courses",
+            discoverer=self._success,
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
+        )
+        self.window.resize(1120, 540)
+        self.window.show()
+        self.application.processEvents()
+        self.window.next()
+        self.application.processEvents()
+        page = self.window.connect_page
+
+        tab_bar = page.provider_tabs.tabBar()
+        tab_bottom = tab_bar.mapTo(
+            self.window, tab_bar.rect().bottomLeft()
+        ).y()
+        group_top = page.canvas_group.mapTo(
+            self.window, page.canvas_group.rect().topLeft()
+        ).y()
+        self.assertGreaterEqual(group_top - tab_bottom - 1, 10)
+
+        style = self.window.styleSheet()
+        checked_rule = style.split("QGroupBox::indicator:checked", 1)[1].split("}", 1)[0]
+        self.assertIn("standardbutton-apply-16.png", checked_rule)
+        self.assertTrue(page.canvas_group.isCheckable())
+        self.assertTrue(page.canvas_group.isChecked())
+        self.assertTrue(page.canvas_help_notice.details_label.isHidden())
+        self.assertTrue(page.ed_help_notice.details_label.isHidden())
+        page.canvas_help_notice.toggle_button.click()
+        self.assertFalse(page.canvas_help_notice.details_label.isHidden())
 
     def test_canvas_token_test_reports_discovered_course_count(self) -> None:
         requested: list[tuple[str, ...]] = []
@@ -215,6 +351,8 @@ class FirstRunWindowTests(unittest.TestCase):
             output_root=self.root / "Courses",
             discoverer=canvas_only,
             secret_resolver=lambda reference: "synthetic-provider-token",
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
         )
         self.window.show()
         self.application.processEvents()
@@ -222,6 +360,7 @@ class FirstRunWindowTests(unittest.TestCase):
         self.window.next()
 
         page = self.window.connect_page
+        page.canvas_url_edit.setText("https://canvas.example.edu/api/v1")
         page.test_canvas_button.click()
         for _ in range(200):
             self.application.processEvents()
@@ -229,12 +368,16 @@ class FirstRunWindowTests(unittest.TestCase):
                 break
             QTest.qWait(5)
 
-        self.assertEqual([("canvas",)], requested)
+        self.assertEqual([], requested)
+        self.assertIn(
+            ("test_existing", "canvas", None, None),
+            self.credential_controller.calls,
+        )
         self.assertIn("Connected successfully", page.canvas_test_status.text())
         self.assertIn("1 course found", page.canvas_test_status.text())
         self.assertTrue(page.canvas_test_status.isVisible())
 
-    def test_failed_ed_token_test_offers_copyable_reset_command(self) -> None:
+    def test_failed_ed_token_test_shows_sanitized_recovery(self) -> None:
         def failed_ed(*args, **kwargs) -> CatalogDiscoveryResult:
             return CatalogDiscoveryResult(
                 OperationStatus.FAILED,
@@ -258,6 +401,8 @@ class FirstRunWindowTests(unittest.TestCase):
             output_root=self.root / "Courses",
             discoverer=failed_ed,
             secret_resolver=lambda reference: "synthetic-provider-token",
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
         )
         self.window.show()
         self.application.processEvents()
@@ -265,6 +410,7 @@ class FirstRunWindowTests(unittest.TestCase):
         self.window.next()
 
         page = self.window.connect_page
+        self.credential_controller.failed_providers.add("ed")
         page.test_ed_button.click()
         for _ in range(200):
             self.application.processEvents()
@@ -272,16 +418,63 @@ class FirstRunWindowTests(unittest.TestCase):
                 break
             QTest.qWait(5)
 
-        self.assertIn("Token test failed", page.ed_test_status.text())
-        self.assertEqual("Copy reset command", page.copy_ed_command_button.text())
+        self.assertIn("authentication", page.ed_test_status.text().casefold())
         page.canvas_group.setChecked(False)
         self.assertFalse(page.validatePage())
         self.assertEqual(1, page.provider_tabs.currentIndex())
         self.assertIn("before continuing", page.ed_test_status.text())
-        page.copy_ed_command_button.click()
-        self.assertEqual(
-            page.ed_setup_command_edit.text(), self.application.clipboard().text()
+
+    def test_changed_target_and_running_operation_cannot_reuse_old_success(self) -> None:
+        self.window = self.FirstRunWindow(
+            config_path=self.config_path,
+            output_root=self.root / "Courses",
+            discoverer=self._success,
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
         )
+        page = self.window.connect_page
+        old_url = "https://old.example.edu/api/v1"
+        page.canvas_url_edit.setText(old_url)
+        serial = page._credential_serials["canvas"]
+        page._credential_operation_keys["canvas"] = (
+            old_url,
+            page.canvas_reference,
+        )
+        page._credential_tasks["canvas"] = object()
+        page.canvas_url_edit.setText("https://new.example.edu/api/v1")
+
+        self.assertFalse(page.validatePage())
+        page._credential_operation_finished(
+            serial,
+            "canvas",
+            CredentialOperationResult(
+                OperationStatus.SUCCEEDED,
+                "canvas",
+                verified=True,
+                persisted=True,
+                course_count=1,
+            ),
+        )
+
+        self.assertNotIn("canvas", page._credential_success_keys)
+        self.assertIn("changed", page.canvas_test_status.text().casefold())
+
+    def test_shutdown_clears_all_token_fields(self) -> None:
+        self.window = self.FirstRunWindow(
+            config_path=self.config_path,
+            output_root=self.root / "Courses",
+            discoverer=self._success,
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
+        )
+        page = self.window.connect_page
+        page.canvas_token_edit.setText("SYNTHETIC_CANVAS_INPUT")
+        page.ed_token_edit.setText("SYNTHETIC_ED_INPUT")
+
+        page.request_credential_shutdown()
+
+        self.assertEqual("", page.canvas_token_edit.text())
+        self.assertEqual("", page.ed_token_edit.text())
 
     def test_successful_discovery_hands_real_catalog_to_existing_setup_window(self) -> None:
         self._open_discover()
@@ -303,6 +496,60 @@ class FirstRunWindowTests(unittest.TestCase):
             self.window._setup_window._save_port.config_path,
         )
         self.assertFalse((self.root / "Courses").exists())
+        self.assertFalse(hasattr(self.window.profile_page, "output_edit"))
+        self.assertEqual(
+            str((self.root / "Courses").resolve(strict=False)),
+            self.window._setup_window.library_root_edit.text(),
+        )
+
+    def test_embedded_dashboard_opener_is_forwarded_to_setup(self) -> None:
+        opened: list[tuple[str, Path]] = []
+
+        def open_dashboard(profile: str, config_path: Path) -> bool:
+            opened.append((profile, config_path))
+            return True
+
+        self._open_discover(dashboard_opener=open_dashboard)
+        self.window.accept()
+        self.application.processEvents()
+
+        embedded = self.window._setup_window._dashboard_opener
+        self.assertTrue(callable(embedded))
+        self.assertTrue(embedded("default", self.config_path))
+        self.assertEqual([("default", self.config_path)], opened)
+        self.assertTrue(self.window._setup_destination_opened)
+
+    def test_closing_embedded_setup_returns_to_profile_chooser(self) -> None:
+        returned: list[bool] = []
+        self._open_discover(
+            profile_chooser_opener=lambda: returned.append(True),
+        )
+        self.window.accept()
+        self.application.processEvents()
+
+        self.window._setup_window.windowClosed.emit(False)
+        self.application.processEvents()
+
+        self.assertEqual([True], returned)
+
+    def test_closing_first_run_window_returns_to_profile_chooser(self) -> None:
+        returned: list[bool] = []
+        self.window = self.FirstRunWindow(
+            config_path=self.config_path,
+            output_root=self.root / "Courses",
+            discoverer=self._success,
+            secret_resolver=lambda reference: "synthetic-provider-token",
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
+            profile_chooser_opener=lambda: returned.append(True),
+        )
+        self.window.show()
+        self.application.processEvents()
+
+        self.window.close()
+        self.application.processEvents()
+
+        self.assertEqual([True], returned)
 
     def test_partial_discovery_requires_explicit_available_only_action(self) -> None:
         def partial(*args, **kwargs) -> CatalogDiscoveryResult:
@@ -341,6 +588,8 @@ class FirstRunWindowTests(unittest.TestCase):
             config_path=self.config_path,
             output_root=self.root / "Courses",
             discoverer=self._success,
+            credential_controller=self.credential_controller,
+            credential_confirmation=lambda provider, profile: True,
         )
         current_serial = self.window._discovery_serial
 

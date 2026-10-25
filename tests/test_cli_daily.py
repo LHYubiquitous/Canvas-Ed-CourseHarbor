@@ -108,7 +108,7 @@ class DailyCliTests(unittest.TestCase):
                 configure_gui_main(["--help"])
 
         self.assertEqual(0, raised.exception.code)
-        self.assertIn("Reconfigure an existing Canvas & Ed profile", output.getvalue())
+        self.assertIn("Reconfigure an existing CourseHarbor profile", output.getvalue())
         launch.assert_not_called()
 
     def test_committed_setup_installs_launchers_but_dry_run_does_not(self) -> None:

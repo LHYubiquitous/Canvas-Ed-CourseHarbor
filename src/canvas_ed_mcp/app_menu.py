@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 
 
 MENU = """\
-Canvas Ed MCP
+CourseHarbor
 
 1. Course material sync
 2. This week's due

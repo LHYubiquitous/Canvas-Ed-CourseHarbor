@@ -52,7 +52,7 @@ class ReleaseGateTests(unittest.TestCase):
         version_match = re.search(r'^__version__ = "([^"]+)"$', package_init, re.MULTILINE)
         self.assertIsNotNone(version_match)
         version = project["project"]["version"]
-        self.assertEqual("0.2.0rc16", version)
+        self.assertEqual("0.2.0rc17", version)
         self.assertEqual(version, version_match.group(1))
         development_dependencies = project["dependency-groups"]["dev"]
         runtime_dependencies = project["project"]["dependencies"]
@@ -81,7 +81,12 @@ class ReleaseGateTests(unittest.TestCase):
             if item["name"] != project["project"]["name"]
         }
         development_only = {
+            ("altgraph", "0.17.5"),
             ("build", "1.6.1"),
+            ("macholib", "1.16.4"),
+            ("pefile", "2024.8.26"),
+            ("pyinstaller", "6.22.3"),
+            ("pyinstaller-hooks-contrib", "2026.9"),
             ("pyproject-hooks", "1.3.3"),
             ("setuptools", "84.0.0"),
             ("wheel", "0.48.0"),

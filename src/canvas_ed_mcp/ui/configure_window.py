@@ -19,6 +19,8 @@ from ..paths import resolve_profile_paths
 from ..providers.base import CourseCandidate
 from ..secrets import resolve_secret
 from .setup_window import SetupWindow
+from .branding import DISPLAY_NAME
+from .icon import apply_application_icon
 
 
 def build_configure_window(
@@ -54,12 +56,13 @@ def _discover(current: AppConfig):
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Reconfigure an existing Canvas & Ed profile"
+        description=f"Reconfigure an existing {DISPLAY_NAME} profile"
     )
     parser.add_argument("--profile", default="default")
     parser.add_argument("--config", type=Path)
     args = parser.parse_args(argv)
     application = QApplication.instance() or QApplication(sys.argv)
+    apply_application_icon(application)
     try:
         paths = resolve_profile_paths(args.profile)
         config_path = (args.config or paths.config_file).resolve(strict=False)
@@ -87,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         0,
         0,
     )
-    progress.setWindowTitle("Reconfigure Canvas & Ed courses")
+    progress.setWindowTitle(f"{DISPLAY_NAME} — Configure courses")
     progress.setCancelButton(None)
     progress.setMinimumDuration(0)
     progress.show()

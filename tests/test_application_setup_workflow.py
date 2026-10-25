@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from canvas_ed_mcp.application.contracts import OperationStatus
 from canvas_ed_mcp.application.setup_controller import SetupController
@@ -17,6 +18,7 @@ class ConfigOnlySetupSaverTests(unittest.TestCase):
         self.temporary = TemporaryDirectory()
         root = Path(self.temporary.name)
         self.output_root = root / "Courses"
+        self.output_root.mkdir()
         self.config_path = root / "profiles" / "default.toml"
         self.canvas = CourseCandidate(
             "canvas",
@@ -61,7 +63,7 @@ class ConfigOnlySetupSaverTests(unittest.TestCase):
         self.controller.open_folders()
         return self.controller.build_review()
 
-    def test_save_commits_the_displayed_plan_once_and_only_creates_config(self) -> None:
+    def test_save_commits_the_displayed_plan_and_prepares_course_folder(self) -> None:
         review = self._review()
         saver = ConfigOnlySetupSaver(self.controller, self.config_path)
 
@@ -69,7 +71,7 @@ class ConfigOnlySetupSaverTests(unittest.TestCase):
 
         self.assertEqual(OperationStatus.SUCCEEDED, result.status)
         self.assertEqual(review.plan.config, load_config(self.config_path))
-        self.assertFalse(self.output_root.exists())
+        self.assertTrue((self.output_root / "COMP2017").is_dir())
         repeated = saver.save(review)
         self.assertEqual(OperationStatus.CONFLICT, repeated.status)
         self.assertEqual("save_already_completed", repeated.issues[0].code)
@@ -105,7 +107,77 @@ class ConfigOnlySetupSaverTests(unittest.TestCase):
         self.assertEqual(OperationStatus.CONFLICT, result.status)
         self.assertEqual("config_exists", result.issues[0].code)
         self.assertEqual(original, self.config_path.read_bytes())
-        self.assertFalse(self.output_root.exists())
+        self.assertEqual([], list(self.output_root.iterdir()))
+
+    def test_existing_course_folder_is_reused(self) -> None:
+        review = self._review()
+        existing = self.output_root / "COMP2017"
+        existing.mkdir()
+        marker = existing / "keep.txt"
+        marker.write_text("keep", encoding="utf-8")
+
+        result = ConfigOnlySetupSaver(self.controller, self.config_path).save(review)
+
+        self.assertEqual(OperationStatus.SUCCEEDED, result.status)
+        self.assertEqual("keep", marker.read_text(encoding="utf-8"))
+
+    def test_course_folder_file_collision_stops_before_config_write(self) -> None:
+        review = self._review()
+        collision = self.output_root / "COMP2017"
+        collision.write_text("not a directory", encoding="utf-8")
+
+        result = ConfigOnlySetupSaver(self.controller, self.config_path).save(review)
+
+        self.assertEqual(OperationStatus.CONFLICT, result.status)
+        self.assertEqual("course_folder_conflict", result.issues[0].code)
+        self.assertFalse(self.config_path.exists())
+
+    def test_link_like_library_root_fails_before_folder_or_config_write(self) -> None:
+        review = self._review()
+        saver = ConfigOnlySetupSaver(self.controller, self.config_path)
+
+        with patch(
+            "canvas_ed_mcp.application.setup_workflow._is_link_like",
+            side_effect=lambda path: path == review.plan.config.output_root,
+        ):
+            result = saver.save(review)
+
+        self.assertEqual(OperationStatus.FAILED, result.status)
+        self.assertEqual("invalid_output_root", result.issues[0].code)
+        self.assertFalse(self.config_path.exists())
+        self.assertEqual([], list(self.output_root.iterdir()))
+
+    def test_failed_config_write_rolls_back_only_new_empty_course_folders(self) -> None:
+        review = self._review()
+        saver = ConfigOnlySetupSaver(self.controller, self.config_path)
+        failed = type(
+            "Result",
+            (),
+            {"status": OperationStatus.FAILED, "config_path": self.config_path, "issues": ()},
+        )()
+
+        with patch(
+            "canvas_ed_mcp.application.setup_workflow.commit_setup_review",
+            return_value=failed,
+        ):
+            result = saver.save(review)
+
+        self.assertEqual(OperationStatus.FAILED, result.status)
+        self.assertFalse((self.output_root / "COMP2017").exists())
+
+    def test_unexpected_config_write_failure_also_rolls_back_new_folder(self) -> None:
+        review = self._review()
+        saver = ConfigOnlySetupSaver(self.controller, self.config_path)
+
+        with patch(
+            "canvas_ed_mcp.application.setup_workflow.commit_setup_review",
+            side_effect=OSError("synthetic write failure"),
+        ):
+            result = saver.save(review)
+
+        self.assertEqual(OperationStatus.FAILED, result.status)
+        self.assertEqual("config_write_failed", result.issues[0].code)
+        self.assertFalse((self.output_root / "COMP2017").exists())
 
     def test_relative_target_is_bound_before_confirmation(self) -> None:
         saver = ConfigOnlySetupSaver(self.controller, Path("relative-profile.toml"))

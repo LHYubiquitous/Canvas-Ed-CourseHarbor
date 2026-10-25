@@ -56,9 +56,11 @@ Official references:
 
 ## 3. Ed personal API token — beta/unofficial integration boundary
 
-After signing in to the correct Ed account, open
-https://edstem.org/au/settings/api-tokens. Create a dedicated personal token and
-place it directly in the OS keyring:
+After signing in to the correct Ed account, open **Settings → API Tokens** in that
+account's region. The Australian page
+https://edstem.org/au/settings/api-tokens is verified for this project; other regional
+token-page URLs are `NOT_RUN` and must not be guessed. Create a dedicated personal
+token and place it directly in the OS keyring:
 
 ```text
 python -m keyring set canvas-ed-mcp/default ed
@@ -96,3 +98,30 @@ Treat `401` with an authentication challenge as expired/invalid credentials and
 rotate or re-authorize. Treat `403` as a permission/course-access failure; generating
 more tokens is not the default remedy. Repeated authentication failures must not fall
 back to browser cookies, passwords, query-string tokens, or a plaintext keyring.
+
+## 5. Desktop save, test, and replacement lifecycle
+
+The unreleased source candidate adds masked token entry to `canvas-ed-setup`. The UI
+passes a short-lived secret to an application-layer credential controller; Qt never
+calls the low-level keyring write API directly. The controller checks native keyring
+readiness before provider traffic, tests only the selected provider with a read-only
+course-list request, closes the provider, checks cancellation, and then persists a
+successful token. Invalid credentials, network/schema failures, and cancellation
+before persistence leave the old credential unchanged.
+
+Replacement requires a confirmation naming the profile, provider, and deterministic
+local target. A blank replacement field means keep the existing credential. Existing
+values may be resolved inside a background worker for **Test existing**, but are never
+returned to Qt or displayed. `env:` references are externally managed and read-only;
+the first-run keyring UI does not create them.
+
+Native keyring writes cannot participate in one atomic transaction with remote testing
+or config commit. Once a write starts it is not cancellable; a backend error makes the
+final local state unknown and the recovery action is **Test existing**. If a later
+config commit fails or the user abandons first run, the verified credential remains at
+its deterministic reference for a retry. The app does not read and retain the old
+token for rollback. Local deletion is not in this vertical slice and, when added,
+will not imply remote token revocation.
+
+The terminal `python -m keyring set ...` flow remains an advanced headless/recovery
+fallback. It is no longer the intended normal onboarding path in the source candidate.

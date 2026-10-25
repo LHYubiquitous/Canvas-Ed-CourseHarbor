@@ -22,14 +22,18 @@ _WHEEL_PACKAGE_FILES = frozenset(
         "canvas_ed_mcp/__main__.py",
         "canvas_ed_mcp/app_menu.py",
         "canvas_ed_mcp/application/__init__.py",
+        "canvas_ed_mcp/application/app_startup.py",
         "canvas_ed_mcp/application/configure_controller.py",
         "canvas_ed_mcp/application/configure_safety.py",
         "canvas_ed_mcp/application/configure_workflow.py",
         "canvas_ed_mcp/application/contracts.py",
+        "canvas_ed_mcp/application/credentials.py",
         "canvas_ed_mcp/application/daily_sync.py",
+        "canvas_ed_mcp/application/due_reports.py",
         "canvas_ed_mcp/application/folder_actions.py",
         "canvas_ed_mcp/application/fingerprints.py",
         "canvas_ed_mcp/application/first_run.py",
+        "canvas_ed_mcp/application/profile_lifecycle.py",
         "canvas_ed_mcp/application/profiles.py",
         "canvas_ed_mcp/application/profile_status.py",
         "canvas_ed_mcp/application/providers.py",
@@ -37,6 +41,7 @@ _WHEEL_PACKAGE_FILES = frozenset(
         "canvas_ed_mcp/application/setup_session.py",
         "canvas_ed_mcp/application/setup_workflow.py",
         "canvas_ed_mcp/application/sync_operation.py",
+        "canvas_ed_mcp/application/sync_reports.py",
         "canvas_ed_mcp/cli.py",
         "canvas_ed_mcp/config.py",
         "canvas_ed_mcp/configure_flow.py",
@@ -72,12 +77,26 @@ _WHEEL_PACKAGE_FILES = frozenset(
         "canvas_ed_mcp/sync/state.py",
         "canvas_ed_mcp/sync/storage.py",
         "canvas_ed_mcp/ui/__init__.py",
+        "canvas_ed_mcp/ui/app_shell.py",
+        "canvas_ed_mcp/ui/branding.py",
+        "canvas_ed_mcp/ui/components.py",
         "canvas_ed_mcp/ui/configure_window.py",
+        "canvas_ed_mcp/ui/connections_page.py",
         "canvas_ed_mcp/ui/daily_dashboard.py",
+        "canvas_ed_mcp/ui/due_dates_page.py",
         "canvas_ed_mcp/ui/first_run_window.py",
+        "canvas_ed_mcp/ui/frozen_runtime.py",
+        "canvas_ed_mcp/ui/icon.py",
+        "canvas_ed_mcp/ui/profile_chooser.py",
         "canvas_ed_mcp/ui/setup_window.py",
     }
 )
+_WHEEL_PACKAGE_DATA = frozenset(
+    {
+        "canvas_ed_mcp/ui/assets/courseharbor.png",
+    }
+)
+_WHEEL_PACKAGE_ENTRIES = _WHEEL_PACKAGE_FILES | _WHEEL_PACKAGE_DATA
 _SDIST_REQUIRED = frozenset(
     {
         "CHANGELOG.md",
@@ -176,10 +195,10 @@ def _audit_wheel(path: Path) -> AuditResult:
 
     present = set(names)
     package_files = {name for name in names if name.startswith("canvas_ed_mcp/")}
-    missing = sorted(_WHEEL_PACKAGE_FILES - package_files)
+    missing = sorted(_WHEEL_PACKAGE_ENTRIES - package_files)
     if missing:
         raise AuditError(f"wheel is missing required entries: {', '.join(missing)}")
-    unexpected = sorted(package_files - _WHEEL_PACKAGE_FILES)
+    unexpected = sorted(package_files - _WHEEL_PACKAGE_ENTRIES)
     if unexpected:
         raise AuditError(f"wheel contains unexpected package entries: {', '.join(unexpected)}")
     if not any(name.endswith(".dist-info/METADATA") for name in names):
@@ -219,9 +238,40 @@ def _is_allowed_sdist_entry(name: str) -> bool:
         "setup.cfg",
     }:
         return True
-    if name in {"src", "src/canvas_ed_mcp", "tests"}:
+    if name in {
+        "packaging",
+        "packaging/icons",
+        "packaging/macos",
+        "packaging/macos/courseharbor.iconset",
+        "packaging/windows",
+        "src",
+        "src/canvas_ed_mcp",
+        "tests",
+    }:
         return True
-    if name in {f"src/{package_name}" for package_name in _WHEEL_PACKAGE_FILES}:
+    if name in {
+        "packaging/icons/README.md",
+        "packaging/icons/courseharbor-source.png",
+        "packaging/icons/generate_icons.py",
+        "packaging/macos/courseharbor.iconset/icon_16x16.png",
+        "packaging/macos/courseharbor.iconset/icon_16x16@2x.png",
+        "packaging/macos/courseharbor.iconset/icon_32x32.png",
+        "packaging/macos/courseharbor.iconset/icon_32x32@2x.png",
+        "packaging/macos/courseharbor.iconset/icon_128x128.png",
+        "packaging/macos/courseharbor.iconset/icon_128x128@2x.png",
+        "packaging/macos/courseharbor.iconset/icon_256x256.png",
+        "packaging/macos/courseharbor.iconset/icon_256x256@2x.png",
+        "packaging/macos/courseharbor.iconset/icon_512x512.png",
+        "packaging/macos/courseharbor.iconset/icon_512x512@2x.png",
+        "packaging/windows/courseharbor.ico",
+        "packaging/windows/courseharbor.spec",
+        "packaging/windows/courseharbor_cli.py",
+        "packaging/windows/courseharbor_gui.py",
+    }:
+        return True
+    if name in {
+        f"src/{package_name}" for package_name in _WHEEL_PACKAGE_ENTRIES
+    }:
         return True
     if name in {
         "src/canvas_ed_mcp/application",
@@ -230,6 +280,7 @@ def _is_allowed_sdist_entry(name: str) -> bool:
         "src/canvas_ed_mcp/renderers",
         "src/canvas_ed_mcp/sync",
         "src/canvas_ed_mcp/ui",
+        "src/canvas_ed_mcp/ui/assets",
         "src/canvas_ed_mcp.egg-info",
     }:
         return True

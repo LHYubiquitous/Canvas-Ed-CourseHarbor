@@ -54,6 +54,8 @@ from canvas_ed_mcp.application.profile_status import (
     inspect_profile_overview,
 )
 from canvas_ed_mcp.application.sync_operation import ReviewedSyncOperation
+from canvas_ed_mcp.ui.branding import DISPLAY_NAME
+from canvas_ed_mcp.ui.components import CollapsibleNotice
 
 
 ConfirmApply = Callable[[SyncReview, bool], bool]
@@ -69,6 +71,7 @@ _PHASE_COPY = {
 }
 
 _ISSUE_COPY = {
+    "authentication_failed": "The saved credential was not accepted by the provider.",
     "authorization_failed": "Some material was not permitted by the provider.",
     "config_changed": "The profile changed. Build a new preview before applying.",
     "state_changed": "The local sync state changed. Build a new preview.",
@@ -79,14 +82,21 @@ _ISSUE_COPY = {
         "was requested."
     ),
     "output_root_missing": (
-        "The local destination folder does not exist. Recreate it or choose "
-        "a new destination in Configure courses."
+        "The local destination folder does not exist. Restore the configured "
+        "Library root before syncing."
     ),
     "invalid_output_root": (
-        "The local destination is not a usable folder. Choose a different "
-        "destination in Configure courses."
+        "The local destination is not a usable folder. Restore it as a directory "
+        "before syncing; changing an existing Library root requires migration."
     ),
     "provider_close_failed": "A provider connection did not close cleanly.",
+    "provider_discovery_failed": (
+        "One course source was unavailable and was excluded from this apply."
+    ),
+    "item_schema_drift": "Some provider data used an unexpected format.",
+    "reconcile_baseline_pending": (
+        "This source needs another successful preview before its baseline is complete."
+    ),
     "source_sync_failed": "One configured source could not be synchronized.",
     "sync_preview_failed": "The material preview could not be prepared.",
     "sync_apply_failed": "The reviewed update could not be completed.",
@@ -170,6 +180,8 @@ def _action_text(actions: tuple[str, ...]) -> str:
 class DailyDashboardWindow(QMainWindow):
     """Daily material-sync window with an exact review/apply boundary."""
 
+    syncFinished = Signal(object)
+
     def __init__(
         self,
         *,
@@ -201,7 +213,7 @@ class DailyDashboardWindow(QMainWindow):
         self._allow_close = False
 
         self.setObjectName("daily_dashboard")
-        self.setWindowTitle("Canvas Ed MCP — Course library")
+        self.setWindowTitle(f"{DISPLAY_NAME} — Course library")
         self.resize(1040, 680)
         self.setMinimumSize(860, 580)
         self._build_window()
@@ -218,75 +230,53 @@ class DailyDashboardWindow(QMainWindow):
         layout = QHBoxLayout(root)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._build_library_spine())
         layout.addWidget(self._build_daily_workspace(), 1)
         self.setCentralWidget(root)
-        root.setAccessibleName("Canvas Ed MCP daily dashboard")
+        root.setAccessibleName("CourseHarbor course library")
         root.setAccessibleDescription(
             "Review and update configured Canvas and Ed course material."
         )
-
-    def _build_library_spine(self) -> QFrame:
-        spine = QFrame()
-        spine.setObjectName("library_spine")
-        spine.setFixedWidth(260)
-        layout = QVBoxLayout(spine)
-        layout.setContentsMargins(24, 28, 24, 24)
-        layout.setSpacing(8)
-
-        eyebrow = QLabel("COURSE LIBRARY")
-        eyebrow.setObjectName("spine_eyebrow")
-        title = QLabel("Canvas\nEd MCP")
-        title.setObjectName("spine_title")
-        layout.addWidget(eyebrow)
-        layout.addWidget(title)
-        layout.addSpacing(28)
-
-        self.profile_value = self._spine_value(layout, "ACTIVE PROFILE")
-        self.library_value = self._spine_value(layout, "LIBRARY")
-        self.providers_value = self._spine_value(layout, "CONNECTED SOURCES")
-        self.output_value = self._spine_value(layout, "LOCAL DESTINATION", wrap=True)
-        self.output_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addStretch(1)
-        local_note = QLabel("Local-first · read-only toward course services")
-        local_note.setObjectName("spine_note")
-        local_note.setWordWrap(True)
-        layout.addWidget(local_note)
-        return spine
-
-    @staticmethod
-    def _spine_value(layout: QVBoxLayout, heading: str, *, wrap: bool = False) -> QLabel:
-        label = QLabel(heading)
-        label.setObjectName("spine_label")
-        value = QLabel("—")
-        value.setObjectName("spine_value")
-        value.setWordWrap(wrap)
-        layout.addWidget(label)
-        layout.addWidget(value)
-        layout.addSpacing(12)
-        return value
 
     def _build_daily_workspace(self) -> QWidget:
         workspace = QWidget()
         workspace.setObjectName("daily_workspace")
         layout = QVBoxLayout(workspace)
-        layout.setContentsMargins(34, 28, 34, 28)
-        layout.setSpacing(16)
+        layout.setContentsMargins(24, 16, 24, 16)
+        layout.setSpacing(8)
 
-        title = QLabel("Keep your course library current")
+        header = QHBoxLayout()
+        header.setSpacing(12)
+        brand_mark = QFrame()
+        brand_mark.setObjectName("brand_mark")
+        brand_mark.setFixedSize(4, 42)
+        brand = QVBoxLayout()
+        brand.setSpacing(0)
+        eyebrow = QLabel(DISPLAY_NAME.upper())
+        eyebrow.setObjectName("brand_eyebrow")
+        title = QLabel("Course library")
         title.setObjectName("daily_title")
-        subtitle = QLabel(
-            "Preview remote changes first, then apply the exact reviewed plan locally."
-        )
-        subtitle.setObjectName("daily_subtitle")
-        subtitle.setWordWrap(True)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
+        brand.addWidget(eyebrow)
+        brand.addWidget(title)
+        header.addWidget(brand_mark)
+        header.addLayout(brand)
+        header.addStretch(1)
+
+        metadata = QHBoxLayout()
+        metadata.setSpacing(20)
+        self.profile_value = self._header_value(metadata, "PROFILE")
+        self.library_value = self._header_value(metadata, "LIBRARY")
+        self.providers_value = self._header_value(metadata, "SOURCES")
+        header.addLayout(metadata)
+        layout.addLayout(header)
+
+        self.output_value = QLabel("—")
+        self.output_value.setAccessibleName("Local destination")
+        self.output_value.hide()
 
         self.status_frame = QFrame()
         self.status_frame.setObjectName("daily_status")
         status_layout = QVBoxLayout(self.status_frame)
-        status_layout.setContentsMargins(14, 10, 14, 10)
+        status_layout.setContentsMargins(12, 7, 12, 7)
         self.status_label = QLabel()
         self.status_label.setObjectName("daily_status_text")
         self.status_label.setWordWrap(True)
@@ -294,18 +284,18 @@ class DailyDashboardWindow(QMainWindow):
         status_layout.addWidget(self.status_label)
         layout.addWidget(self.status_frame)
 
-        self.warning_frame = QFrame()
+        self.warning_frame = CollapsibleNotice(
+            tone="warning",
+            dismissible=True,
+            accessibility_subject="material warnings",
+        )
         self.warning_frame.setObjectName("warning_panel")
-        warning_layout = QVBoxLayout(self.warning_frame)
-        warning_layout.setContentsMargins(14, 10, 14, 10)
-        warning_title = QLabel("Review before applying")
-        warning_title.setObjectName("warning_title")
-        self.warning_label = QLabel()
-        self.warning_label.setObjectName("warning_text")
+        self.warning_summary = self.warning_frame.summary_label
+        self.warning_summary.setAccessibleName("Material warning summary")
+        self.warning_toggle_button = self.warning_frame.toggle_button
+        self.warning_close_button = self.warning_frame.close_button
+        self.warning_label = self.warning_frame.details_label
         self.warning_label.setAccessibleName("Material sync warnings")
-        self.warning_label.setWordWrap(True)
-        warning_layout.addWidget(warning_title)
-        warning_layout.addWidget(self.warning_label)
         self.warning_frame.hide()
         layout.addWidget(self.warning_frame)
 
@@ -313,7 +303,7 @@ class DailyDashboardWindow(QMainWindow):
         self.source_table.setObjectName("source_review")
         self.source_table.setAccessibleName("Material sync review")
         self.source_table.setHorizontalHeaderLabels(
-            ("Course", "Source", "Reviewed action", "Warnings")
+            ("Course", "Source", "Reviewed action", "Status")
         )
         self.source_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.source_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -321,10 +311,11 @@ class DailyDashboardWindow(QMainWindow):
         self.source_table.setAlternatingRowColors(True)
         self.source_table.verticalHeader().hide()
         header = self.source_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.source_table.setColumnWidth(0, 430)
         layout.addWidget(self.source_table, 1)
 
         progress_row = QHBoxLayout()
@@ -335,6 +326,7 @@ class DailyDashboardWindow(QMainWindow):
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setFixedWidth(190)
         self.progress_bar.hide()
+        self.progress_label.hide()
         progress_row.addWidget(self.progress_label, 1)
         progress_row.addWidget(self.progress_bar)
         layout.addLayout(progress_row)
@@ -366,6 +358,19 @@ class DailyDashboardWindow(QMainWindow):
         QWidget.setTabOrder(self.preview_button, self.apply_button)
         return workspace
 
+    @staticmethod
+    def _header_value(layout: QHBoxLayout, heading: str) -> QLabel:
+        block = QVBoxLayout()
+        block.setSpacing(0)
+        label = QLabel(heading)
+        label.setObjectName("meta_label")
+        value = QLabel("—")
+        value.setObjectName("meta_value")
+        block.addWidget(label)
+        block.addWidget(value)
+        layout.addLayout(block)
+        return value
+
     def _render_overview(self) -> None:
         self.profile_value.setText(self.overview.profile)
         self.library_value.setText(
@@ -393,7 +398,7 @@ class DailyDashboardWindow(QMainWindow):
         elif self.overview.status is OperationStatus.PARTIAL:
             self._set_status("The profile is usable, but local state needs attention.", "warning")
         else:
-            self._set_status("Profile ready. Build a preview to check for changes.", "ready")
+            self._set_status("Ready to preview.", "ready")
         self.preview_button.setEnabled(not blocked)
         self.open_button.setEnabled(self.overview.output_exists)
 
@@ -410,6 +415,7 @@ class DailyDashboardWindow(QMainWindow):
         self.apply_button.setEnabled(self._review is not None)
         self.cancel_button.hide()
         self.progress_bar.hide()
+        self.progress_label.hide()
 
     def _set_busy(self, message: str) -> None:
         self.preview_button.setEnabled(False)
@@ -418,6 +424,7 @@ class DailyDashboardWindow(QMainWindow):
         self.cancel_button.show()
         self.cancel_button.setEnabled(True)
         self.progress_label.setText(message)
+        self.progress_label.show()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.show()
         self._set_status(message, "working")
@@ -441,6 +448,7 @@ class DailyDashboardWindow(QMainWindow):
 
     def start_preview(self) -> None:
         self._review = None
+        self.source_table.setRowCount(0)
         self.warning_frame.hide()
         self.apply_button.setText("Apply reviewed changes")
         self._start_task(
@@ -530,6 +538,7 @@ class DailyDashboardWindow(QMainWindow):
     def _finish_preview(self, result: object) -> None:
         if not isinstance(result, SyncPreviewResult):
             self._review = None
+            self.source_table.setRowCount(0)
             self._set_status("The material preview could not be prepared.", "error")
             self.progress_label.setText("Preview failed")
             self._set_idle_controls()
@@ -543,14 +552,13 @@ class DailyDashboardWindow(QMainWindow):
                 "Apply available items" if partial else "Apply reviewed changes"
             )
             self._set_status(
-                "Preview ready with warnings. Review every source before applying."
-                if partial
-                else "Preview ready. Review the exact local changes before applying.",
+                f"Preview ready · {len(result.review.sources)} sources reviewed",
                 "warning" if partial else "ready",
             )
             self.progress_label.setText("Planning complete")
         else:
             self._review = None
+            self.source_table.setRowCount(0)
             self._set_status(
                 "The preview is no longer actionable. Check the warning and try again.",
                 "error",
@@ -561,6 +569,7 @@ class DailyDashboardWindow(QMainWindow):
     def _finish_apply(self, result: object) -> None:
         self._review = None
         if not isinstance(result, SyncApplyResult):
+            self.source_table.setRowCount(0)
             self._set_status("The reviewed update could not be completed.", "error")
             self.progress_label.setText("Update failed")
             self._set_idle_controls()
@@ -582,6 +591,7 @@ class DailyDashboardWindow(QMainWindow):
         else:
             self._set_status("The reviewed update could not be completed.", "error")
             self.progress_label.setText("Update failed")
+        self.syncFinished.emit(result)
         self._set_idle_controls()
 
     def _show_issues(self, issues: tuple[ApplicationIssue, ...]) -> None:
@@ -590,28 +600,59 @@ class DailyDashboardWindow(QMainWindow):
         )
         if not visible:
             self.warning_frame.hide()
+            self.warning_summary.clear()
             self.warning_label.clear()
             return
-        self.warning_label.setText("\n".join(f"• {_issue_text(issue)}" for issue in visible))
+        counts = Counter(issue.code for issue in visible)
+        type_count = len(counts)
+        occurrence_count = sum(counts.values())
+        self.warning_summary.setText(
+            f"{type_count} issue type{'s' if type_count != 1 else ''} · "
+            f"{occurrence_count} occurrence{'s' if occurrence_count != 1 else ''}"
+        )
+        self.warning_frame.setTone(
+            "error"
+            if any(issue.severity is IssueSeverity.ERROR for issue in visible)
+            else "warning"
+        )
+        self.warning_label.setText(
+            "\n".join(
+                f"• {count} × {_issue_code_text(code)}"
+                for code, count in sorted(counts.items())
+            )
+        )
+        self.warning_frame.setExpanded(False)
         self.warning_frame.show()
 
     def _render_sources(self, sources: tuple[SyncSourceSummary, ...]) -> None:
         self.source_table.setRowCount(len(sources))
         for row, source in enumerate(sources):
+            issue_count = len(source.issue_codes)
             warning = (
-                " ".join(_issue_code_text(code) for code in source.issue_codes)
-                if source.issue_codes
-                else "None"
+                "Unavailable"
+                if "provider_discovery_failed" in source.issue_codes
+                else f"{issue_count} warning{'s' if issue_count != 1 else ''}"
+                if issue_count
+                else "Ready"
+            )
+            action = (
+                "Excluded from apply"
+                if "provider_discovery_failed" in source.issue_codes
+                else _action_text(source.actions)
             )
             values = (
                 source.course_display_name,
                 source.source_display_name,
-                _action_text(source.actions),
+                action,
                 warning,
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                item.setToolTip(value)
+                item.setToolTip(
+                    "\n".join(_issue_code_text(code) for code in source.issue_codes)
+                    if column == 3 and source.issue_codes
+                    else value
+                )
                 self.source_table.setItem(row, column, item)
         if sources:
             self.source_table.selectRow(0)
@@ -659,16 +700,13 @@ class DailyDashboardWindow(QMainWindow):
     def _apply_style(self) -> None:
         self.setStyleSheet(
             """
-            QMainWindow, QWidget#daily_workspace { background: #F6F8FC; color: #15243A; }
+            QMainWindow, QWidget#daily_workspace { background: #F6F8FB; color: #172033; }
             QWidget { font-family: "Segoe UI Variable", "SF Pro Text", "Segoe UI"; font-size: 10pt; }
-            QFrame#library_spine { background: #15243A; color: #F4F7FC; }
-            QLabel#spine_eyebrow { color: #86A9FF; font-size: 8pt; font-weight: 750; letter-spacing: 1px; }
-            QLabel#spine_title { color: #FFFFFF; font-size: 24pt; font-weight: 720; line-height: 0.9; }
-            QLabel#spine_label { color: #94A5BD; font-size: 8pt; font-weight: 700; }
-            QLabel#spine_value { color: #F4F7FC; font-size: 10pt; font-weight: 600; }
-            QLabel#spine_note { color: #AEBBD0; font-size: 9pt; }
-            QLabel#daily_title { font-size: 22pt; font-weight: 700; color: #15243A; }
-            QLabel#daily_subtitle { color: #5F6C80; }
+            QFrame#brand_mark { background: #2F6FED; border-radius: 2px; }
+            QLabel#brand_eyebrow { color: #2F6FED; font-size: 8pt; font-weight: 750; letter-spacing: 1px; }
+            QLabel#daily_title { font-size: 18pt; font-weight: 650; color: #172033; }
+            QLabel#meta_label { color: #788398; font-size: 7.5pt; font-weight: 700; }
+            QLabel#meta_value { color: #172033; font-size: 9pt; font-weight: 600; }
             QFrame#daily_status { border-radius: 5px; }
             QFrame#daily_status[tone="ready"] { background: #EAF0FF; border-left: 4px solid #3B6FF5; }
             QFrame#daily_status[tone="working"] { background: #EAF0FF; border-left: 4px solid #3B6FF5; }
@@ -676,9 +714,17 @@ class DailyDashboardWindow(QMainWindow):
             QFrame#daily_status[tone="warning"] { background: #FFF1D9; border-left: 4px solid #A35D00; }
             QFrame#daily_status[tone="error"] { background: #FCE9E8; border-left: 4px solid #A83A35; }
             QLabel#daily_status_text { color: #263B5D; font-weight: 600; }
-            QFrame#warning_panel { background: #FFF1D9; border: 1px solid #E6BD79; border-radius: 5px; }
-            QLabel#warning_title { color: #7B4800; font-weight: 700; }
-            QLabel#warning_text { color: #67441A; }
+            QFrame#warning_panel { border-radius: 5px; }
+            QFrame#warning_panel[tone="warning"] { background: #FFF7E8; border: 1px solid #E6BD79; }
+            QFrame#warning_panel[tone="error"] { background: #FCE9E8; border: 1px solid #DDA6A2; }
+            QFrame#warning_panel QLabel#notice_summary { color: #7B4800; font-weight: 700; }
+            QFrame#warning_panel QLabel#notice_details { color: #67441A; }
+            QFrame#warning_panel QPushButton#notice_toggle_button { min-height: 24px; padding: 1px 8px; color: #7B4800; background: transparent; border: none; font-weight: 650; }
+            QFrame#warning_panel QPushButton#notice_close_button { min-height: 24px; padding: 0; color: #7B4800; background: transparent; border: none; font-size: 13pt; }
+            QFrame#warning_panel[tone="error"] QLabel#notice_summary,
+            QFrame#warning_panel[tone="error"] QLabel#notice_details { color: #7A1E1E; }
+            QFrame#warning_panel[tone="error"] QPushButton#notice_toggle_button,
+            QFrame#warning_panel[tone="error"] QPushButton#notice_close_button { color: #7A1E1E; }
             QTableWidget#source_review { background: #FFFFFF; border: 1px solid #D9E1EC; border-radius: 5px; selection-background-color: #E5EDFF; selection-color: #15243A; gridline-color: #E8EDF4; }
             QTableWidget#source_review:focus { border: 2px solid #3B6FF5; }
             QHeaderView::section { background: #EDF2F8; color: #384961; padding: 8px; border: none; border-bottom: 1px solid #D9E1EC; font-weight: 650; }
@@ -686,7 +732,7 @@ class DailyDashboardWindow(QMainWindow):
             QLabel#progress_label { color: #5F6C80; }
             QProgressBar { border: 1px solid #C7D2E2; border-radius: 3px; background: #E8EDF4; min-height: 8px; max-height: 8px; }
             QProgressBar::chunk { background: #3B6FF5; border-radius: 3px; }
-            QPushButton { min-height: 32px; padding: 3px 15px; color: #15243A; background: #FFFFFF; border: 1px solid #B9C5D5; border-radius: 5px; }
+            QPushButton { min-height: 32px; padding: 3px 15px; color: #172033; background: #FFFFFF; border: 1px solid #B9C5D5; border-radius: 5px; }
             QPushButton:hover { background: #EDF3FF; border-color: #7D9FE7; }
             QPushButton:focus { border: 2px solid #174EA6; background: #EDF3FF; }
             QPushButton:disabled { color: #99A3B2; background: #EEF1F5; border-color: #D8DEE8; }
@@ -723,11 +769,14 @@ def create_daily_dashboard(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Canvas Ed MCP daily desktop app")
+    from .icon import apply_application_icon
+
+    parser = argparse.ArgumentParser(description=f"{DISPLAY_NAME} daily desktop app")
     parser.add_argument("--profile", default="default")
     parser.add_argument("--config", type=Path)
     args = parser.parse_args(argv)
     application = QApplication.instance() or QApplication(sys.argv)
+    apply_application_icon(application)
     window = create_daily_dashboard(profile=args.profile, config_path=args.config)
     window.show()
     window.raise_()

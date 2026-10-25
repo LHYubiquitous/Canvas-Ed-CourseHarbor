@@ -1,5 +1,38 @@
 # Release and Security Audit
 
+## 0.2.0rc17 release gate
+
+Status: **PASS — PRIVATE GITHUB PRERELEASE PUBLISHED**
+Audit date: 2026-10-26
+
+`0.2.0rc17` introduces the CourseHarbor App Shell, graphical Canvas/Ed credential
+workflow, independent due-date views/exports, per-course sync reports and folders,
+profile lifecycle, faster read-only material preview, and the first self-contained
+Windows onedir candidate. The public `v0.2.0rc16` release remains immutable; this rc17
+release is confined to the private `Canvas-Ed-CourseHarbor` repository.
+
+| Gate | rc17 result |
+|---|---|
+| Full automated suite | `PASS`: 684 tests, 31 documented skips; Python 3.10 version contract passed |
+| Credential boundary | `PASS`: typed application service, fake keyring/provider tests, masked transient input, provider-isolated read-only validation |
+| Deterministic source/wheel/sdist | `PASS`: exact allowlists, metadata/SBOM, private material/path scan, two-build byte comparison |
+| Windows portable structure | `PASS`: 878 files / 156,586,733 bytes; GUI subsystem 2, CLI subsystem 3, exactly one `qwindows.dll`, both executables carry icon resources |
+| Windows dependency/keyring smoke | `PASS`: QtCore, HTTP/SSL, CLI help, and `Windows.WinVaultKeyring` readiness; no credential read/write |
+| Windows relocation smoke | `PASS`: GUI and CLI exited 0 from a copied directory outside the repository |
+| Windows visible frozen App Shell | `PASS`: owner confirmed all requested visible routes behaved normally on 2026-10-26 |
+| Application icon assets | `PASS`: runtime PNG, seven-size Windows ICO, and ten-file macOS iconset validated |
+| GitHub tag/prerelease | `PASS`: private `v0.2.0rc17` prerelease in `LHYubiquitous/Canvas-Ed-CourseHarbor` |
+| macOS `.app`/DMG, signing and notarization | `NOT_RUN`: follows this Windows-first release |
+| Windows/macOS signing, installer upgrade/uninstall | `NOT_RUN` |
+| PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
+
+The Windows asset is an unsigned portable onedir archive, not an installer. The bundle
+audit rejects embedded repository, user-directory, interpreter, or build paths; complete PEM private
+keys, unsafe filenames, symlinks/junctions, unexpected PE subsystems, and missing or
+duplicate Qt platform plugins. Build dependency discovery runs with an isolated PATH so
+unrelated owner-device tools cannot supply same-named DLLs. No Token, private course
+content, profile config, state, launcher, or user data is included in the assets.
+
 ## 0.2.0rc16 release gate
 
 Status: **PASS — PUBLIC GITHUB PRERELEASE PUBLISHED**
@@ -12,25 +45,35 @@ macOS runner without the rc15 quote corruption.
 
 | Gate | rc16 result |
 |---|---|
-| Root-cause application regression tests | `PASS` locally |
+| Root-cause application regression tests | `PASS`: replacement-window teardown 30/30, complete setup UI module 10/10, then the full release suite |
 | Complete public release suite | `PASS`: 474 non-GUI tests plus 37 process-isolated GUI tests; 2 documented platform skips in the Windows run |
 | Exact wheel build and distribution audit | `PASS`: private CI deterministic build/audit/install job |
-| macOS exact-wheel automated and human label gate | `PASS`: owner-device macOS 26.5.2 arm64, Python 3.14.8, exact wheel SHA-256 `3dc625712651d37661a8e3d19ea9debd3d4212ba47dc9359c290ea1d36e35dec` |
+| macOS exact-wheel automated and human label gate | `PASS`: macOS 26.5.2 arm64, Python 3.14.8, exact wheel SHA-256 `3dc625712651d37661a8e3d19ea9debd3d4212ba47dc9359c290ea1d36e35dec` |
 | macOS real local Apply | `NOT_RUN`: not required for this presentation-only repair |
-| Remote Windows/macOS/Linux CI | `PASS`: private product run [40055096148](https://github.com/LHYubiquitous/canvas-ed-mcp/actions/runs/40055096148) and public release-source run [40106666647](https://github.com/LHYubiquitous/canvas-ed-mcp-public/actions/runs/40106666647) |
+| Remote Windows/macOS/Linux CI | `PASS`: private release-gate [run 40104529592](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/40104529592), private final HEAD [run 40104851327](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/40104851327), and public release-source [run 40106666647](https://github.com/LHYubiquitous/canvas-ed-mcp-public/actions/runs/40106666647) |
 | GitHub tag/prerelease | `PASS`: [v0.2.0rc16](https://github.com/LHYubiquitous/canvas-ed-mcp-public/releases/tag/v0.2.0rc16), tag target `620b6776fe06d92b3d188f70937afa28c5a03237` |
 | PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
 
-The private matrix passed on Windows and macOS at Python 3.10/3.14 and on Linux at
+An earlier documentation-only head exposed a nondeterministic Windows/Python 3.14
+test-fixture teardown failure after all setup-window assertions had passed. The test
+replaced one Qt window without first destroying its wrapper; delayed collection could
+then terminate the process with `0xC0000005`. Commit `4346a65` makes that ownership
+transition deterministic. The runtime source, package metadata, dependency locks, and
+SBOM are unchanged from the owner-tested runtime inputs; only release documentation and
+the test module changed.
+
+The final private matrix passed on Windows and macOS at Python 3.10/3.14 and on Linux at
 every declared Python version from 3.10 through 3.14. Both Windows jobs ran the real
 PySide6 test modules in isolated processes, including the setup-window focus-delivery
-regression that previously exposed a Python 3.14 access violation. The distribution job
+and replacement-window teardown regressions. The distribution job
 then passed deterministic packet construction, public manifest and metadata audits,
 exact-wheel installation, clean-source installation, console-entry-point checks,
-and MCP protocol smoke tests. The owner-device macOS gate then installed the exact
-published wheel, validated the human-readable labels and default-No confirmation,
-and completed without writing provider data. The public tag and six release assets
-were verified after upload; PyPI publication remains outside this release.
+and MCP protocol smoke tests. The owner-device macOS gate then passed packet integrity,
+exact-wheel install, dependency, contrast, read-only preview, human-readable Course and
+Source labels, confirmation labels/default `No`, and normal dashboard exit. The owner
+selected `No`; no local Apply or provider write occurred. An initial attempt failed
+closed on an expired local Canvas credential; after the owner replaced it directly in
+macOS Keychain, the exact unchanged candidate passed the complete gate.
 
 ## 0.2.0rc15 release gate
 
@@ -133,7 +176,7 @@ already been rerun on those devices.
 | Locked pylock/SBOM audit | `PASS` with reviewed `uv 0.11.28` |
 | Deterministic wheel, sdist, clean-source packet | `PASS`: 42 / 99 / 127 entries |
 | Windows/macOS real behavior | Historical rc9–rc11 evidence only; rc12 rerun `NOT_RUN` |
-| Remote Windows/macOS/Linux CI | `PASS` at commit `7340b14`; [workflow run 39411378014](https://github.com/LHYubiquitous/canvas-ed-mcp/actions/runs/39411378014) |
+| Remote Windows/macOS/Linux CI | `PASS` at commit `7340b14`; [workflow run 39411378014](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/39411378014) |
 | GitHub tag/prerelease | `NOT_RUN` |
 | PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
 

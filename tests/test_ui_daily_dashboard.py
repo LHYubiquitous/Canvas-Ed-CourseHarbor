@@ -11,10 +11,11 @@ from unittest.mock import patch
 
 try:
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QFrame
 except ImportError:  # pragma: no cover - optional desktop dependency.
     QTest = None  # type: ignore[assignment]
     QApplication = None  # type: ignore[assignment]
+    QFrame = None  # type: ignore[assignment]
 
 from canvas_ed_mcp.application.contracts import (
     ApplicationIssue,
@@ -209,7 +210,7 @@ class DailyDashboardStyleContractTests(unittest.TestCase):
             QPalette.ColorRole.ButtonText
         )
 
-        self.assertEqual("#15243a", foreground.name())
+        self.assertEqual("#172033", foreground.name())
 
     def test_confirmation_buttons_keep_dark_text_on_the_light_button_surface(self) -> None:
         from PySide6.QtGui import QPalette
@@ -233,7 +234,7 @@ class DailyDashboardStyleContractTests(unittest.TestCase):
                 foreground = button.palette().color(
                     QPalette.ColorRole.ButtonText
                 )
-                self.assertEqual("#15243a", foreground.name())
+                self.assertEqual("#172033", foreground.name())
         finally:
             dialog.close()
 
@@ -285,6 +286,8 @@ class DailyDashboardTests(unittest.TestCase):
         self.fail("dashboard worker did not finish")
 
     def test_status_is_visible_without_credential_references(self) -> None:
+        self.assertEqual("CourseHarbor — Course library", self.window.windowTitle())
+        self.assertIsNone(self.window.findChild(QFrame, "library_spine"))
         self.assertEqual("test", self.window.profile_value.text())
         self.assertIn("1 course", self.window.library_value.text())
         self.assertIn("Canvas", self.window.providers_value.text())
@@ -298,9 +301,72 @@ class DailyDashboardTests(unittest.TestCase):
         )
         self.assertIn(
             "QPushButton { min-height: 32px; padding: 3px 15px; "
-            "color: #15243A; background: #FFFFFF;",
+            "color: #172033; background: #FFFFFF;",
             self.window.styleSheet(),
         )
+
+    def test_warning_summary_is_aggregated_collapsed_and_dismissible(self) -> None:
+        issues = (
+            ApplicationIssue("authorization_failed", IssueSeverity.WARNING),
+            ApplicationIssue("authorization_failed", IssueSeverity.WARNING),
+            ApplicationIssue("provider_discovery_failed", IssueSeverity.WARNING),
+        )
+
+        self.window._show_issues(issues)
+
+        self.assertTrue(self.window.warning_frame.isVisible())
+        self.assertIn("2 issue types", self.window.warning_summary.text())
+        self.assertIn("3 occurrences", self.window.warning_summary.text())
+        self.assertTrue(self.window.warning_label.isHidden())
+        self.assertEqual("Show details", self.window.warning_toggle_button.text())
+        self.assertEqual(1, self.window.warning_label.text().count("not permitted"))
+
+        self.window.warning_toggle_button.click()
+        self.assertFalse(self.window.warning_label.isHidden())
+        self.assertEqual("Hide details", self.window.warning_toggle_button.text())
+
+        self.window.warning_close_button.click()
+        self.assertTrue(self.window.warning_frame.isHidden())
+
+    def test_error_notice_uses_error_tone_without_calling_it_a_warning(self) -> None:
+        self.window._show_issues(
+            (ApplicationIssue("output_root_missing", IssueSeverity.ERROR),)
+        )
+
+        self.assertEqual("error", self.window.warning_frame.property("tone"))
+        self.assertIn("1 issue type", self.window.warning_summary.text())
+        self.assertNotIn("warning", self.window.warning_summary.text().lower())
+
+    def test_failed_repreview_clears_stale_source_rows(self) -> None:
+        self.window.preview_button.click()
+        self._wait_idle()
+        self.assertEqual(1, self.window.source_table.rowCount())
+        self.port.preview_result = SyncPreviewResult(
+            OperationStatus.FAILED,
+            issues=(ApplicationIssue("sync_preview_failed", IssueSeverity.ERROR),),
+        )
+
+        self.window.preview_button.click()
+        self.assertEqual(0, self.window.source_table.rowCount())
+        self._wait_idle()
+
+        self.assertEqual(0, self.window.source_table.rowCount())
+        self.assertFalse(self.window.apply_button.isEnabled())
+
+    def test_compact_layout_keeps_the_course_table_as_the_main_workspace(self) -> None:
+        issues = tuple(
+            ApplicationIssue("authorization_failed", IssueSeverity.WARNING)
+            for _ in range(8)
+        )
+        self.window.resize(1040, 680)
+        self.window._show_issues(issues)
+        self.application.processEvents()
+
+        self.assertGreaterEqual(self.window.source_table.viewport().height(), 300)
+        button_bottom = self.window.apply_button.mapTo(
+            self.window.centralWidget(), self.window.apply_button.rect().bottomLeft()
+        ).y()
+        self.assertLessEqual(button_bottom, self.window.centralWidget().rect().bottom())
 
     def test_missing_output_root_is_specific_and_never_actionable(self) -> None:
         self.port.preview_result = SyncPreviewResult(
@@ -320,6 +386,8 @@ class DailyDashboardTests(unittest.TestCase):
             "local destination folder does not exist",
             self.window.warning_label.text().lower(),
         )
+        self.assertIn("restore", self.window.warning_label.text().lower())
+        self.assertNotIn("configure courses", self.window.warning_label.text().lower())
         self.assertFalse(self.window.apply_button.isEnabled())
         self.assertEqual(0, self.window.source_table.rowCount())
 
@@ -360,6 +428,19 @@ class DailyDashboardTests(unittest.TestCase):
         self.assertFalse(self.window.apply_button.isEnabled())
         self.assertIn("complete", self.window.status_label.text().lower())
 
+    def test_invalid_apply_result_clears_the_consumed_review_rows(self) -> None:
+        self.window.preview_button.click()
+        self._wait_idle()
+        self.assertEqual(1, self.window.source_table.rowCount())
+        self.port.apply_result = object()  # type: ignore[assignment]
+        self.confirm = True
+
+        self.window.apply_button.click()
+        self._wait_idle()
+
+        self.assertEqual(0, self.window.source_table.rowCount())
+        self.assertFalse(self.window.apply_button.isEnabled())
+
     def test_default_confirmation_uses_human_readable_course_and_source_names(self) -> None:
         from PySide6.QtWidgets import QMessageBox
 
@@ -399,7 +480,11 @@ class DailyDashboardTests(unittest.TestCase):
         self.assertTrue(self.window.warning_frame.isVisible())
         self.assertIn("permitted", self.window.warning_label.text().lower())
         source_warning = self.window.source_table.item(0, 3).text()
-        self.assertIn("permitted", source_warning.lower())
+        self.assertEqual("1 warning", source_warning)
+        self.assertIn(
+            "permitted",
+            self.window.source_table.item(0, 3).toolTip().lower(),
+        )
         self.assertNotIn("authorization_failed", source_warning)
 
     def test_open_folder_uses_typed_service_with_expected_root(self) -> None:

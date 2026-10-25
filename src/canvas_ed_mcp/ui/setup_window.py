@@ -1,7 +1,7 @@
 """PySide6 first-run setup window over the framework-neutral controller.
 
 This module renders in-memory setup and exact preview state.  An injected save
-port may add an explicit config-only commit, followed by an explicit daily-use
+port may add an explicit local-setup commit, followed by an explicit daily-use
 launcher install.  It performs no discovery or provider calls.
 """
 
@@ -15,6 +15,7 @@ from typing import Callable, TypeVar
 from PySide6.QtCore import (
     QEvent,
     QObject,
+    QProcess,
     QRunnable,
     QThreadPool,
     QTimer,
@@ -38,6 +39,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -80,6 +82,13 @@ from canvas_ed_mcp.application.setup_workflow import SetupSavePort
 from canvas_ed_mcp.config import ContentSelection, DownloadPolicy
 from canvas_ed_mcp.initial import InitialSyncMode
 from canvas_ed_mcp.launchers import install_launchers, render_launchers
+from canvas_ed_mcp.ui.branding import DISPLAY_NAME
+from canvas_ed_mcp.ui.components import CollapsibleNotice
+from canvas_ed_mcp.ui.frozen_runtime import (
+    APP_SHELL_MODULE,
+    detached_module_command,
+    frozen_companion_executables,
+)
 
 
 _T = TypeVar("_T")
@@ -100,6 +109,7 @@ class FolderRowWidgets:
 
     default_label: QLabel
     override_edit: QLineEdit
+    browse_button: QPushButton
     initial_mode_combo: QComboBox
 
 
@@ -128,12 +138,15 @@ class _ConfigSaveTask(QRunnable):
 class SetupWindow(QMainWindow):
     """Four-step setup surface with an optional injected save capability."""
 
+    windowClosed = Signal(bool)
+
     def __init__(
         self,
         controller: SetupController,
         *,
         save_port: SetupSavePort | None = None,
         mode: str = "setup",
+        dashboard_opener: Callable[[str, Path], bool] | None = None,
     ) -> None:
         if not isinstance(controller, SetupController):
             raise TypeError("controller must be a SetupController")
@@ -144,14 +157,17 @@ class SetupWindow(QMainWindow):
         self._mode = mode
         self._updating_course_settings = False
         self._save_port = save_port
+        self._dashboard_opener = dashboard_opener
         self._thread_pool = QThreadPool.globalInstance()
         self._save_task: _ConfigSaveTask | None = None
         self._save_in_progress = False
         self._configuration_saved = False
+        self._configuration_save_warning = False
         self._launcher_directory: Path | None = None
         self._daily_menu_launcher: Path | None = None
         self._centered = False
-        self._discard_confirmed = False
+        self._allow_close = False
+        self._close_notified = False
         self._updating_courses = False
         self._focus_timer = QTimer(self)
         self._focus_timer.setSingleShot(True)
@@ -163,9 +179,9 @@ class SetupWindow(QMainWindow):
 
         self.setObjectName("setup_window")
         self.setWindowTitle(
-            "Reconfigure Canvas & Ed courses"
+            f"{DISPLAY_NAME} — Configure courses"
             if mode == "configure"
-            else "Set up Canvas & Ed courses"
+            else f"{DISPLAY_NAME} — Set up courses"
         )
         self.resize(1040, 720)
         self.setMinimumSize(860, 620)
@@ -179,8 +195,8 @@ class SetupWindow(QMainWindow):
     def _build_window(self) -> None:
         root = QWidget()
         root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(28, 24, 28, 22)
-        root_layout.setSpacing(16)
+        root_layout.setContentsMargins(24, 16, 24, 16)
+        root_layout.setSpacing(8)
 
         title = QLabel(
             "Update your local course library"
@@ -188,14 +204,7 @@ class SetupWindow(QMainWindow):
             else "Choose what belongs in your local course library"
         )
         title.setObjectName("window_title")
-        subtitle = QLabel(
-            "Add or remove courses, adjust safe mappings, then review the exact configuration change."
-            if self._mode == "configure"
-            else "Review Canvas and Ed together, then preview the exact local layout."
-        )
-        subtitle.setObjectName("window_subtitle")
         root_layout.addWidget(title)
-        root_layout.addWidget(subtitle)
         root_layout.addWidget(self._build_step_rail())
 
         self.page_stack = QStackedWidget()
@@ -207,7 +216,8 @@ class SetupWindow(QMainWindow):
         root_layout.addWidget(self.page_stack, 1)
 
         root_layout.addWidget(self._build_status_bar())
-        root_layout.addWidget(self._build_navigation())
+        self.navigation_bar = self._build_navigation()
+        root_layout.addWidget(self.navigation_bar)
         self._configure_tab_order()
         self.setCentralWidget(root)
 
@@ -250,8 +260,8 @@ class SetupWindow(QMainWindow):
         rail = QFrame()
         rail.setObjectName("step_rail")
         layout = QHBoxLayout(rail)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(6)
         self.step_labels: list[QLabel] = []
         self.step_numbers: list[QLabel] = []
         for index, label_text in enumerate(_STEP_LABELS, start=1):
@@ -290,11 +300,9 @@ class SetupWindow(QMainWindow):
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(0, 0, 0, 0)
         self.preview_badge = QLabel(
-            "Config-only setup" if self._save_port is not None else "Preview only"
+            "Local setup" if self._save_port is not None else "Preview only"
         )
         self.preview_badge.setObjectName("preview_badge")
-        self.exit_button = QPushButton("Exit setup")
-        self.exit_button.setObjectName("exit_button")
         self.back_button = QPushButton("Back")
         self.back_button.setObjectName("back_button")
         self.continue_button = QPushButton("Continue")
@@ -306,11 +314,9 @@ class SetupWindow(QMainWindow):
         continue_shadow.setColor(QColor(47, 111, 237, 90))
         self.continue_button.setGraphicsEffect(continue_shadow)
         layout.addWidget(self.preview_badge)
-        layout.addWidget(self.exit_button)
         layout.addStretch(1)
         layout.addWidget(self.back_button)
         layout.addWidget(self.continue_button)
-        self.exit_button.clicked.connect(self._request_exit)
         self.back_button.clicked.connect(self._back)
         self.continue_button.clicked.connect(self._continue)
         return bar
@@ -559,6 +565,7 @@ class SetupWindow(QMainWindow):
             "Confirm course matches",
             "Matching suggestions appear below. Nothing is linked until you confirm it.",
         )
+        layout.setSpacing(4)
 
         self.mapping_summary_label = QLabel()
         self.mapping_summary_label.setObjectName("mapping_summary_label")
@@ -581,19 +588,24 @@ class SetupWindow(QMainWindow):
             self.linked_list,
             self.separate_list,
         ):
-            match_list.setMinimumHeight(180)
+            match_list.setMinimumHeight(match_list.fontMetrics().lineSpacing() * 6 + 16)
+            match_list.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            )
 
         self.logical_key_label = QLabel("&Logical course key")
         self.logical_key_label.setObjectName("logical_key_label")
         logical_key_font = self.logical_key_label.font()
-        logical_key_font.setPointSize(13)
         logical_key_font.setBold(True)
         self.logical_key_label.setFont(logical_key_font)
         logical_key_hint = QLabel(
-            "Used as the shared course identity and folder basis. You can edit the suggested value."
+            "Shared course identity and folder name."
         )
         logical_key_hint.setObjectName("logical_key_hint")
         logical_key_hint.setWordWrap(True)
+        logical_key_hint.setAccessibleDescription(
+            "Used as the shared course identity and folder basis. You can edit the suggested value."
+        )
         self.logical_key_edit = QLineEdit()
         self.logical_key_edit.setObjectName("logical_key_edit")
         self.logical_key_edit.setPlaceholderText("Select a pending suggestion")
@@ -602,18 +614,23 @@ class SetupWindow(QMainWindow):
         pending_group.layout().addWidget(logical_key_hint)
         pending_group.layout().addWidget(self.logical_key_edit)
 
-        pending_actions = QVBoxLayout()
-        self.map_link_button = QPushButton("Treat as the same course")
+        pending_actions = QHBoxLayout()
+        pending_actions.setSpacing(6)
+        self.map_link_button = QPushButton("Link courses")
         self.map_link_button.setObjectName("map_link_button")
-        self.map_link_button.setMinimumHeight(40)
-        self.map_link_button.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        self.map_link_button.setAccessibleName(
+            "Treat selected courses as the same course"
         )
-        self.map_separate_button = QPushButton("Keep as separate courses")
+        self.map_link_button.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
+        )
+        self.map_separate_button = QPushButton("Keep separate")
         self.map_separate_button.setObjectName("map_separate_button")
-        self.map_separate_button.setMinimumHeight(40)
+        self.map_separate_button.setAccessibleName(
+            "Keep selected courses as separate courses"
+        )
         self.map_separate_button.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
         )
         pending_actions.addWidget(self.map_link_button, 1)
         pending_actions.addWidget(self.map_separate_button, 1)
@@ -712,9 +729,11 @@ class SetupWindow(QMainWindow):
         self.separate_list.currentItemChanged.connect(
             lambda _current, _previous: self._update_mapping_undo_buttons()
         )
-        page.setMinimumHeight(610)
         self.map_scroll = QScrollArea()
         self.map_scroll.setObjectName("map_scroll")
+        self.map_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.map_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.map_scroll.setWidgetResizable(True)
         self.map_scroll.setHorizontalScrollBarPolicy(
@@ -727,6 +746,7 @@ class SetupWindow(QMainWindow):
     def _match_group(title: str) -> tuple[QGroupBox, QListWidget]:
         group = QGroupBox(title)
         box = QVBoxLayout(group)
+        box.setSpacing(4)
         items = QListWidget()
         items.setWordWrap(True)
         items.setAlternatingRowColors(True)
@@ -943,12 +963,56 @@ class SetupWindow(QMainWindow):
 
     def _build_folders_page(self) -> QWidget:
         page, layout = self._page_shell(
-            "Choose local folder names",
-            "Each row shows the collision-safe default. Override only when a different local name helps.",
+            "Choose the library root and course folders",
+            "Each course folder is a direct child of the Library root. Nothing is moved or created during review.",
         )
+        library_group = QGroupBox("Library root")
+        library_group.setObjectName("library_root_group")
+        library_layout = QVBoxLayout(library_group)
+        library_layout.setContentsMargins(10, 8, 10, 8)
+        library_layout.setSpacing(4)
+        library_group.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum
+        )
+        library_row = QHBoxLayout()
+        self.library_root_edit = QLineEdit(str(self.controller.output_root))
+        self.library_root_edit.setObjectName("library_root_edit")
+        self.library_root_edit.setAccessibleName("Library root")
+        self.library_root_edit.setReadOnly(True)
+        self.choose_library_root_button = QPushButton("Choose library…")
+        self.choose_library_root_button.setObjectName("choose_library_root_button")
+        self.choose_library_root_button.setAccessibleName("Choose Library root")
+        self.choose_library_root_button.clicked.connect(self._browse_library_root)
+        library_row.addWidget(self.library_root_edit, 1)
+        library_row.addWidget(self.choose_library_root_button)
+        library_layout.addLayout(library_row)
+        library_hint = QLabel(
+            "Course folders, launchers, and due reports use this root. Choose it "
+            "before selecting course folders."
+        )
+        library_hint.setObjectName("library_root_hint")
+        library_hint.setWordWrap(True)
+        library_hint.setAccessibleDescription(
+            "Course folders, Canvas Ed MCP Launchers, and due reports live under "
+            "this root. Choose the root here, then choose each course folder below."
+        )
+        library_layout.addWidget(library_hint)
+        if not self.controller.output_root_editable:
+            self.choose_library_root_button.setEnabled(False)
+            self.choose_library_root_button.setToolTip(
+                "Changing an existing Library root requires a separate file migration."
+            )
+        layout.addWidget(library_group)
+
         content_group = QGroupBox("Content and file limits")
         content_group.setObjectName("content_defaults_group")
+        content_group.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum
+        )
         content_layout = QGridLayout(content_group)
+        content_layout.setContentsMargins(10, 8, 10, 8)
+        content_layout.setHorizontalSpacing(10)
+        content_layout.setVerticalSpacing(4)
         if self._mode == "configure":
             self.course_settings_label = QLabel("&Course to edit:")
             self.course_settings_combo = QComboBox()
@@ -987,11 +1051,15 @@ class SetupWindow(QMainWindow):
         content_layout.addWidget(self.max_file_label, content_row, 2)
         content_layout.addWidget(self.max_file_mib_spin, content_row, 3)
         content_hint = QLabel(
-            "Canvas Pages means HTML pages linked from Modules. Canvas Files includes "
-            "module-linked files and the course Files area."
+            "Pages are module-linked HTML. Files includes module-linked and "
+            "course-area files."
         )
         content_hint.setObjectName("content_defaults_hint")
         content_hint.setWordWrap(True)
+        content_hint.setAccessibleDescription(
+            "Canvas Pages means HTML pages linked from Modules. Canvas Files includes "
+            "module-linked files and the course Files area."
+        )
         content_layout.addWidget(content_hint, content_row + 1, 2, 1, 2)
         content_layout.setColumnStretch(0, 1)
         content_layout.setColumnStretch(1, 1)
@@ -1010,16 +1078,25 @@ class SetupWindow(QMainWindow):
         )
 
         per_course_hint = QLabel(
-            "Choose initial download separately for each course below. Linked Canvas "
-            "and Ed sources use the same choice."
+            "Choose the initial download for each course. Linked sources share one choice."
         )
         per_course_hint.setObjectName("per_course_initial_hint")
         per_course_hint.setWordWrap(True)
+        per_course_hint.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum
+        )
         layout.addWidget(per_course_hint)
 
         self.folder_table = QTableWidget(0, 4)
         self.folder_table.setObjectName("folder_table")
         self.folder_table.setAccessibleName("Local course folder settings")
+        self.folder_table.setAccessibleDescription(
+            "Choose initial download separately for each course. Linked Canvas and Ed "
+            "sources use the same choice."
+        )
+        self.folder_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.folder_table.setHorizontalHeaderLabels(
             ("Course", "Sources", "Initial download", "Folder name")
         )
@@ -1051,6 +1128,7 @@ class SetupWindow(QMainWindow):
             logical_key: row.override_edit.text()
             for logical_key, row in self.folder_rows.items()
         }
+        self.library_root_edit.setText(str(self.controller.output_root))
         defaults_widgets = (
             self.canvas_pages_checkbox,
             self.canvas_files_checkbox,
@@ -1125,7 +1203,6 @@ class SetupWindow(QMainWindow):
         self.folder_rows.clear()
         self.folder_table.setRowCount(len(choices))
         for row_index, choice in enumerate(choices):
-            self.folder_table.setRowHeight(row_index, 78)
             presentation = presentations[choice.course_key]
             sources = tuple(
                 self.controller.course(source.candidate_key)
@@ -1189,8 +1266,8 @@ class SetupWindow(QMainWindow):
             folder_cell = QWidget()
             folder_cell.setObjectName("folder_name_cell")
             folder_layout = QVBoxLayout(folder_cell)
-            folder_layout.setContentsMargins(6, 3, 6, 3)
-            folder_layout.setSpacing(3)
+            folder_layout.setContentsMargins(4, 1, 4, 1)
+            folder_layout.setSpacing(2)
             default_label = QLabel(
                 f"Default: {presentation.computed_default}"
             )
@@ -1210,23 +1287,86 @@ class SetupWindow(QMainWindow):
             )
             override_edit.setAccessibleDescription(
                 "Optional. Leave blank to use "
-                f"{presentation.computed_default}."
+                f"{presentation.computed_default}, or browse to an existing folder "
+                "directly inside the Library root."
+            )
+            override_edit.textEdited.connect(lambda _text: self._clear_status())
+            browse_button = QPushButton("Browse…")
+            browse_button.setObjectName(f"folder_browse_{row_index}")
+            browse_button.setAccessibleName(
+                f"Choose target folder for {choice.course_key}"
+            )
+            browse_button.setToolTip(
+                "Choose an existing direct child of the Library root."
+            )
+            browse_button.clicked.connect(
+                lambda _checked=False, key=choice.course_key: self._browse_course_folder(key)
             )
             if self._mode == "configure" and hasattr(
                 self.controller, "is_existing_course"
             ) and self.controller.is_existing_course(choice.course_key):
                 override_edit.setEnabled(False)
+                browse_button.setEnabled(False)
                 override_edit.setToolTip(
                     "Existing folder names are fixed in this version; files are never moved."
                 )
             folder_layout.addWidget(default_label)
-            folder_layout.addWidget(override_edit)
+            folder_input_layout = QHBoxLayout()
+            folder_input_layout.setContentsMargins(0, 0, 0, 0)
+            folder_input_layout.addWidget(override_edit, 1)
+            folder_input_layout.addWidget(browse_button)
+            folder_layout.addLayout(folder_input_layout)
             self.folder_table.setCellWidget(row_index, 3, folder_cell)
             self.folder_rows[choice.course_key] = FolderRowWidgets(
                 default_label,
                 override_edit,
+                browse_button,
                 initial_mode_combo,
             )
+            self.folder_table.setRowHeight(
+                row_index,
+                max(64, initial_cell.sizeHint().height(), folder_cell.sizeHint().height()),
+            )
+
+    def _browse_library_root(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "Choose Library root",
+            str(self.controller.output_root),
+        )
+        if not selected:
+            return
+        try:
+            root = self.controller.library_root_for_selected_directory(Path(selected))
+        except ValueError as exc:
+            self._show_status(str(exc), status="warning")
+            return
+        changed = self._run_action(lambda: self.controller.set_output_root(root))
+        if changed:
+            self._show_status(
+                "Library root changed. Course folder names were kept and now resolve "
+                "under the new root.",
+                status="success",
+            )
+
+    def _browse_course_folder(self, logical_key: str) -> None:
+        row = self.folder_rows.get(logical_key)
+        if row is None:
+            return
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            f"Choose target folder for {logical_key}",
+            str(self.controller.output_root),
+        )
+        if not selected:
+            return
+        try:
+            folder = self.controller.folder_name_for_selected_directory(Path(selected))
+        except ValueError as exc:
+            self._show_status(str(exc), status="warning")
+            return
+        row.override_edit.setText(folder)
+        self._clear_status()
 
     def _course_initial_mode_changed(
         self, logical_key: str, value: object
@@ -1351,7 +1491,7 @@ class SetupWindow(QMainWindow):
 
     def _build_review_page(self) -> QWidget:
         description = (
-            "Verify the exact destinations and settings, then save only this configuration."
+            "Verify the exact destinations and settings, then save this local setup."
             if self._save_port is not None
             else "Verify the exact destinations and settings in this preview."
         )
@@ -1360,14 +1500,20 @@ class SetupWindow(QMainWindow):
             description,
         )
         notice = (
-            "Review the exact plan below. Saving creates only the configuration file; "
-            "it does not download course content or create course folders."
+            "Review the exact plan below. Saving creates the configuration file and any "
+            "missing empty course folders. It does not download course content."
             if self._save_port is not None
             else "Preview only — nothing has been saved. This window has no commit action."
         )
-        self.review_notice = QLabel(notice)
+        self.review_notice = CollapsibleNotice(
+            summary="What will be saved",
+            text=notice,
+            tone="warning",
+            dismissible=False,
+            expanded=False,
+            accessibility_subject="setup explanation",
+        )
         self.review_notice.setObjectName("review_notice")
-        self.review_notice.setWordWrap(True)
         self.review_preview = QPlainTextEdit()
         self.review_preview.setObjectName("review_preview")
         self.review_preview.setAccessibleName("Exact setup preview")
@@ -1381,7 +1527,7 @@ class SetupWindow(QMainWindow):
         if self._save_port is not None:
             save_actions = QHBoxLayout()
             save_actions.addStretch(1)
-            self.install_launchers_button = QPushButton("Install daily-use shortcuts")
+            self.install_launchers_button = QPushButton("Install CLI shortcuts")
             self.install_launchers_button.setObjectName("install_launchers_button")
             self.install_launchers_button.setMinimumWidth(220)
             self.install_launchers_button.clicked.connect(self._install_daily_launchers)
@@ -1392,22 +1538,11 @@ class SetupWindow(QMainWindow):
             self.open_launchers_button.clicked.connect(self._open_launchers_folder)
             self.open_launchers_button.hide()
             save_actions.addWidget(self.open_launchers_button)
-            self.open_daily_menu_button = QPushButton("Open daily menu")
+            self.open_daily_menu_button = QPushButton("Open daily dashboard")
             self.open_daily_menu_button.setObjectName("open_daily_menu_button")
             self.open_daily_menu_button.clicked.connect(self._open_daily_menu)
             self.open_daily_menu_button.hide()
             save_actions.addWidget(self.open_daily_menu_button)
-            self.commit_button = QPushButton("Save configuration")
-            self.commit_button.setObjectName("commit_button")
-            self.commit_button.setMinimumWidth(190)
-            self.commit_button.setDefault(True)
-            commit_shadow = QGraphicsDropShadowEffect(self.commit_button)
-            commit_shadow.setBlurRadius(22)
-            commit_shadow.setOffset(0, 4)
-            commit_shadow.setColor(QColor(47, 111, 237, 90))
-            self.commit_button.setGraphicsEffect(commit_shadow)
-            self.commit_button.clicked.connect(self._request_config_save)
-            save_actions.addWidget(self.commit_button)
             layout.addLayout(save_actions)
         return page
 
@@ -1446,12 +1581,12 @@ class SetupWindow(QMainWindow):
             + f"Courses: {review.course_count}\n"
             + f"Sources: {review.source_count}\n\n"
             + (
-                "Only the configuration file will be updated. Existing course files and "
-                "sync history will not be moved or deleted, and no content will be downloaded."
+                "The configuration will be updated and any missing empty course folders "
+                "will be created. Existing files and sync history will not be moved or deleted."
                 if configure_mode
-                else "Only the configuration file will be created. No course content will be "
-                "downloaded, and no course folders, sync state, credentials, or launchers "
-                "will be written."
+                else "The configuration file and any missing empty course folders will be "
+                "created. No course content will be downloaded, and sync state, credentials, "
+                "or launchers will not be written."
             )
         )
         answer = QMessageBox.question(
@@ -1464,9 +1599,9 @@ class SetupWindow(QMainWindow):
         if answer != QMessageBox.StandardButton.Save:
             return
         self._save_in_progress = True
-        self.commit_button.setEnabled(False)
+        self.continue_button.setEnabled(False)
+        self.continue_button.setText("Saving…")
         self.back_button.setEnabled(False)
-        self.exit_button.setEnabled(False)
         self._show_status("Saving the reviewed configuration…", status="working")
         task = _ConfigSaveTask(self._save_port, review)
         task.signals.finished.connect(self._config_save_finished)
@@ -1477,28 +1612,42 @@ class SetupWindow(QMainWindow):
     def _config_save_finished(self, value: object) -> None:
         self._save_in_progress = False
         self._save_task = None
-        self.exit_button.setEnabled(True)
         if not isinstance(value, SetupCommitResult):
-            self.commit_button.setEnabled(True)
+            self.continue_button.setEnabled(True)
+            self.continue_button.setText("Save configuration")
             self.back_button.setEnabled(True)
             self._show_status("Configuration could not be saved safely.")
             return
         if value.status in {OperationStatus.SUCCEEDED, OperationStatus.PARTIAL}:
             self._configuration_saved = True
-            self.commit_button.setEnabled(False)
+            self._configuration_save_warning = value.status is OperationStatus.PARTIAL
             self.back_button.setEnabled(False)
-            self.exit_button.setText("Close")
+            self.navigation_bar.hide()
+            self.review_notice.setSummary(
+                "Setup saved with a warning"
+                if value.status is OperationStatus.PARTIAL
+                else "Setup complete"
+            )
+            self.review_notice.setTone(
+                "warning" if value.status is OperationStatus.PARTIAL else "success"
+            )
             self.review_notice.setText(
                 (
-                    "Configuration changes saved. Existing files and sync history were not "
-                    "moved or deleted. Run course material sync separately when you are ready."
+                    "Configuration changes saved and course folders are ready. Existing files "
+                    "and sync history were not moved or deleted."
                     if self._mode == "configure"
-                    else "Configuration saved. No course content was downloaded. Next, install "
-                    "the daily-use shortcuts; starting the first sync remains a separate "
-                    "action that asks for confirmation."
+                    else "Configuration saved and course folders are ready. No course content "
+                    "was downloaded. You can open the dashboard or install CLI shortcuts."
+                )
+                + (
+                    " Configuration cleanup is still pending."
+                    if self._configuration_save_warning
+                    else ""
                 )
             )
+            self.open_daily_menu_button.show()
             if self._mode == "setup":
+                self.install_launchers_button.setText("Install CLI shortcuts")
                 self.install_launchers_button.show()
             if value.status is OperationStatus.PARTIAL:
                 self._show_status(
@@ -1511,10 +1660,11 @@ class SetupWindow(QMainWindow):
                     status="success",
                 )
             return
-        self.commit_button.setEnabled(
+        self.continue_button.setEnabled(
             self.controller.step is SetupStep.REVIEW
             and self.controller.review_state is ReviewState.CURRENT
         )
+        self.continue_button.setText("Save configuration")
         self.back_button.setEnabled(True)
         issue_code = value.issues[0].code if value.issues else "config_write_failed"
         message = {
@@ -1537,6 +1687,21 @@ class SetupWindow(QMainWindow):
             "mapping_became_locked": (
                 "Sync history or local files changed after this preview, so the mapping is now locked."
             ),
+            "invalid_output_root": (
+                "The Library root is unavailable or unsafe. Go back to Folders and choose an existing folder."
+            ),
+            "course_folder_target_unsafe": (
+                "A course folder is no longer safely inside the Library root. Go back to Folders and choose it again."
+            ),
+            "course_folder_conflict": (
+                "A course folder name is already used by a file or link. Go back to Folders and choose another folder name."
+            ),
+            "course_folder_create_failed": (
+                "The course folders could not be created. Check access to the Library root and try again."
+            ),
+            "course_folder_cleanup_pending": (
+                "Setup could not finish, and an empty folder may need manual cleanup before retrying."
+            ),
         }.get(issue_code, "Configuration could not be saved safely.")
         self._show_status(message)
 
@@ -1553,37 +1718,90 @@ class SetupWindow(QMainWindow):
             or config.output_root / "Canvas Ed MCP Launchers"
         )
         try:
-            rendered = render_launchers(
-                profile=config.profile,
-                config_path=self._save_port.config_path.resolve(),
-                python_executable=Path(sys.executable),
-                platform=sys.platform,
-            )
+            launcher_arguments = {
+                "profile": config.profile,
+                "config_path": self._save_port.config_path.resolve(),
+                "platform": sys.platform,
+            }
+            if bool(getattr(sys, "frozen", False)):
+                gui_executable, cli_executable = frozen_companion_executables()
+                rendered = render_launchers(
+                    **launcher_arguments,
+                    gui_executable=gui_executable,
+                    cli_executable=cli_executable,
+                )
+            else:
+                rendered = render_launchers(
+                    **launcher_arguments,
+                    python_executable=Path(sys.executable),
+                )
             result = install_launchers(directory, rendered)
         except (OSError, ValueError):
             self._show_status(
                 "The daily-use shortcuts could not be installed. Your configuration "
-                "is still saved safely.",
+                "is still saved safely."
+                + (
+                    " Configuration cleanup is also still pending."
+                    if self._configuration_save_warning
+                    else ""
+                ),
                 status="warning",
             )
             return
         suffix = ".cmd" if sys.platform == "win32" else ".command" if sys.platform == "darwin" else ".sh"
+        daily_launcher_name = f"canvas_ed_app{suffix}"
+        daily_launcher_ready = daily_launcher_name in {
+            *result.created,
+            *result.reused,
+        }
         self._launcher_directory = directory
-        self._daily_menu_launcher = directory / f"canvas_ed_app{suffix}"
+        self._daily_menu_launcher = (
+            directory / daily_launcher_name if daily_launcher_ready else None
+        )
         self.install_launchers_button.hide()
         self.open_launchers_button.show()
-        self.open_daily_menu_button.show()
-        self.review_notice.setText(
-            "Setup is complete. Open the daily menu to preview and confirm the first "
-            "course sync, or open the shortcuts folder for direct actions."
-        )
         changed = len(result.created)
         reused = len(result.reused)
-        self._show_status(
-            f"Daily-use shortcuts are ready in {directory} "
-            f"({changed} created, {reused} already current).",
-            status="success",
+        if not daily_launcher_ready:
+            self.review_notice.setTone("warning")
+            self.review_notice.setText(
+                "Setup is complete, but an edited daily-dashboard shortcut was preserved. "
+                "Open the shortcuts folder to review the generated replacement."
+                + (
+                    " Configuration cleanup is also still pending."
+                    if self._configuration_save_warning
+                    else ""
+                )
+            )
+            self._show_status(
+                "The edited shortcut was preserved and was not opened. Review the generated "
+                "replacement in the shortcuts folder.",
+                status="warning",
+            )
+            return
+        self.review_notice.setText(
+            "Setup is complete. Open the daily dashboard to preview and confirm the first "
+            "course sync, or open the shortcuts folder for direct actions."
+            + (
+                " Configuration cleanup is still pending."
+                if self._configuration_save_warning
+                else ""
+            )
         )
+        self.review_notice.setTone(
+            "warning" if self._configuration_save_warning else "success"
+        )
+        if self._configuration_save_warning:
+            self._show_status(
+                "Daily-use shortcuts are ready, but configuration cleanup is still pending.",
+                status="warning",
+            )
+        else:
+            self._show_status(
+                f"Daily-use shortcuts are ready in {directory} "
+                f"({changed} created, {reused} already current).",
+                status="success",
+            )
 
     def _open_launchers_folder(self) -> None:
         if self._launcher_directory is None:
@@ -1592,17 +1810,52 @@ class SetupWindow(QMainWindow):
             self._show_status("The shortcuts folder could not be opened automatically.")
 
     def _open_daily_menu(self) -> None:
-        if self._daily_menu_launcher is None:
+        if not self._configuration_saved or self._save_port is None:
             return
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._daily_menu_launcher))):
+        review = self.controller.review
+        if review is None:
+            return
+        if self._dashboard_opener is not None:
+            self._allow_close = True
+            try:
+                opened = bool(
+                    self._dashboard_opener(
+                        review.plan.config.profile,
+                        self._save_port.config_path.resolve(strict=False),
+                    )
+                )
+            except Exception:
+                opened = False
+            if opened:
+                self.close()
+                return
+            self._allow_close = False
             self._show_status(
-                "The daily menu could not be opened automatically. Open it from the "
-                "shortcuts folder instead."
+                "The daily dashboard could not be opened safely in this app session."
+            )
+            return
+        program, arguments = detached_module_command(
+            APP_SHELL_MODULE,
+            (
+                "--profile",
+                review.plan.config.profile,
+                "--config",
+                str(self._save_port.config_path),
+            ),
+        )
+        launched = QProcess.startDetached(program, list(arguments))
+        started = launched[0] if isinstance(launched, tuple) else bool(launched)
+        if not started:
+            self._show_status(
+                "The daily dashboard could not be opened automatically."
             )
 
     # ---- Controller boundary -----------------------------------------
 
     def _continue(self) -> None:
+        if self.controller.step is SetupStep.REVIEW:
+            self._request_config_save()
+            return
         action_by_step: dict[SetupStep, Callable[[], object]] = {
             SetupStep.SELECT: self.controller.open_mapping,
             SetupStep.MAP: self.controller.open_folders,
@@ -1625,9 +1878,6 @@ class SetupWindow(QMainWindow):
 
     def _back(self) -> None:
         self._run_action(self.controller.back)
-
-    def _request_exit(self) -> None:
-        self.close()
 
     def _run_action(
         self, action: Callable[[], _T], *, refresh_on_error: bool = True
@@ -1686,6 +1936,8 @@ class SetupWindow(QMainWindow):
             )
         elif self.controller.step is SetupStep.MAP:
             continue_enabled = not self.controller.pending_matches
+        elif self.controller.step is SetupStep.REVIEW:
+            continue_enabled = self._save_port is not None and not self._configuration_saved
         self.continue_button.setEnabled(continue_enabled)
         self.continue_button.setText(
             {
@@ -1704,7 +1956,7 @@ class SetupWindow(QMainWindow):
                 ),
                 SetupStep.FOLDERS: "Build exact preview",
                 SetupStep.REVIEW: (
-                    "Ready to save above"
+                    "Save configuration"
                     if self._save_port is not None
                     else "Preview only"
                 ),
@@ -1760,8 +2012,8 @@ class SetupWindow(QMainWindow):
         page.setAccessibleName(title_text)
         page.setAccessibleDescription(description)
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 8, 0, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(8)
         title = QLabel(title_text)
         title.setObjectName("page_title")
         copy = QLabel(description)
@@ -1784,6 +2036,11 @@ class SetupWindow(QMainWindow):
         self._centered = True
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._allow_close:
+            self._focus_timer.stop()
+            event.accept()
+            self._emit_window_closed()
+            return
         if self._save_in_progress:
             self._show_status(
                 "Wait for the configuration save to finish before closing.",
@@ -1791,40 +2048,47 @@ class SetupWindow(QMainWindow):
             )
             event.ignore()
             return
-        if (
-            self._discard_confirmed
-            or self._configuration_saved
-            or not self.isVisible()
-            or not self.controller.has_draft_changes
-        ):
+        if not self.isVisible():
             self._focus_timer.stop()
             event.accept()
+            self._emit_window_closed()
             return
+        saved = self._configuration_saved
         answer = QMessageBox.question(
             self,
-            "Exit setup?",
-            "Your current selections and mapping decisions have not been saved. "
-            "Discard them and exit setup?",
+            "Close setup?",
+            (
+                "Your configuration is saved. Close this window?"
+                if saved
+                else "Your current selections and mapping decisions may not be saved. "
+                "Close this window?"
+            ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:
-            self._discard_confirmed = True
             self._focus_timer.stop()
             event.accept()
+            self._emit_window_closed()
         else:
             event.ignore()
+
+    def _emit_window_closed(self) -> None:
+        if self._close_notified:
+            return
+        self._close_notified = True
+        self.windowClosed.emit(self._configuration_saved)
 
     def _apply_style(self) -> None:
         self.setStyleSheet(
             """
             QMainWindow, QWidget { background: #F6F8FB; color: #172033; }
             QWidget { font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
-            QLabel#window_title { font-size: 20pt; font-weight: 650; color: #172033; }
+            QLabel#window_title { font-size: 18pt; font-weight: 650; color: #172033; }
             QLabel#window_subtitle, QLabel#page_copy { color: #5C667A; }
-            QLabel#page_title { font-size: 15pt; font-weight: 650; color: #172033; }
+            QLabel#page_title { font-size: 13pt; font-weight: 650; color: #172033; }
             QFrame#step_rail { background: #FFFFFF; border: 1px solid #DDE4F0; border-radius: 8px; }
-            QLabel#step_number { min-width: 24px; min-height: 24px; max-width: 24px; max-height: 24px; border-radius: 12px; font-weight: 700; }
+            QLabel#step_number { min-width: 22px; min-height: 22px; max-width: 22px; max-height: 22px; border-radius: 11px; font-weight: 700; }
             QLabel#step_number[stepState="active"] { background: #2F6FED; color: white; }
             QLabel#step_number[stepState="complete"] { background: #DCE8FF; color: #1E55B3; }
             QLabel#step_number[stepState="upcoming"] { background: #EDF1F7; color: #7A8497; }
@@ -1855,7 +2119,7 @@ class SetupWindow(QMainWindow):
                 image: url(:/qt-project.org/styles/commonstyle/images/standardbutton-apply-16.png);
             }
             QCheckBox:checked { font-weight: 650; }
-            QHeaderView::section { background: #EDF1F7; color: #3C465A; padding: 7px; border: none; border-bottom: 1px solid #D5DDEA; font-weight: 650; }
+            QHeaderView::section { background: #EDF1F7; color: #3C465A; padding: 5px; border: none; border-bottom: 1px solid #D5DDEA; font-weight: 650; }
             QTableView::item, QTableWidget::item, QListWidget::item { padding: 6px; }
             QGroupBox { background: #FFFFFF; border: 1px solid #DDE4F0; border-radius: 7px; margin-top: 10px; padding-top: 10px; font-weight: 650; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
@@ -1866,20 +2130,29 @@ class SetupWindow(QMainWindow):
             QPushButton:disabled { color: #9AA3B2; background: #EEF1F5; border-color: #D8DEE8; }
             QPushButton#continue_button { background: #2F6FED; color: #FFFFFF; border-color: #2F6FED; font-weight: 650; }
             QPushButton#continue_button:hover { background: #285FCB; }
-            QPushButton#commit_button, QPushButton#install_launchers_button, QPushButton#open_daily_menu_button { background: #2F6FED; color: #FFFFFF; border-color: #2F6FED; font-weight: 650; }
-            QPushButton#commit_button:hover, QPushButton#install_launchers_button:hover, QPushButton#open_daily_menu_button:hover { background: #285FCB; }
+            QPushButton#install_launchers_button, QPushButton#open_daily_menu_button { background: #2F6FED; color: #FFFFFF; border-color: #2F6FED; font-weight: 650; }
+            QPushButton#install_launchers_button:hover, QPushButton#open_daily_menu_button:hover { background: #285FCB; }
             QLabel#selected_count_label { color: #1E55B3; font-weight: 650; }
-            QLabel#logical_key_label { font-size: 13pt; font-weight: 700; color: #172033; padding-top: 4px; }
+            QLabel#logical_key_label { font-weight: 700; color: #172033; padding-top: 2px; }
             QLineEdit#logical_key_edit { min-height: 36px; font-weight: 600; }
             QLabel#preview_badge { color: #5C667A; background: #E9EDF4; border-radius: 10px; padding: 3px 9px; }
-            QLabel#review_notice { color: #674D00; background: #FFF4CC; border: 1px solid #E8CF73; border-radius: 5px; padding: 9px; font-weight: 600; }
+            QFrame#review_notice { border-radius: 5px; }
+            QFrame#review_notice[tone="warning"] { background: #FFF4CC; border: 1px solid #E8CF73; }
+            QFrame#review_notice[tone="success"] { background: #E5F5EA; border: 1px solid #8BC79D; }
+            QFrame#review_notice QLabel#notice_summary { color: #674D00; font-weight: 650; }
+            QFrame#review_notice QLabel#notice_details { color: #674D00; }
+            QFrame#review_notice QPushButton#notice_toggle_button { min-height: 24px; padding: 1px 8px; color: #674D00; background: transparent; border: none; font-weight: 650; }
+            QFrame#review_notice[tone="success"] QLabel#notice_summary,
+            QFrame#review_notice[tone="success"] QLabel#notice_details,
+            QFrame#review_notice[tone="success"] QPushButton#notice_toggle_button { color: #155724; }
             QFrame#status_frame { border-radius: 5px; }
             QFrame#status_frame[status="error"] { background: #FDE8E7; border: 1px solid #E8AAA6; }
             QFrame#status_frame[status="success"] { background: #E5F5EA; border: 1px solid #8BC79D; }
             QFrame#status_frame[status="warning"] { background: #FFF4CC; border: 1px solid #E8CF73; }
             QFrame#status_frame[status="working"] { background: #E7F0FF; border: 1px solid #9EBBEA; }
             QLabel#status_label { color: #263B63; }
-            QLabel#default_folder_label { font-family: "Cascadia Mono", Consolas; color: #263B63; padding: 4px; }
+            QLabel#library_root_hint, QLabel#content_defaults_hint, QLabel#per_course_initial_hint, QLabel#logical_key_hint { font-size: 9pt; color: #5C667A; }
+            QLabel#default_folder_label { font-family: "Cascadia Mono", Consolas; color: #263B63; padding: 1px; }
             QWidget#initial_mode_cell, QWidget#folder_name_cell { background: transparent; }
             """
         )

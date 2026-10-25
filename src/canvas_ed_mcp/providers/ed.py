@@ -15,6 +15,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from contextlib import contextmanager
+from threading import RLock
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlparse, urlsplit, urlunsplit
 
@@ -379,11 +380,13 @@ class EdProvider:
         self._lesson_snapshots: dict[SourceKey, dict[str, Any]] = {}
         self._lesson_items: dict[SourceKey, RemoteItem] = {}
         self._resource_items: dict[SourceKey, RemoteItem] = {}
+        self._cache_lock = RLock()
 
     def close(self) -> None:
-        self._lesson_snapshots.clear()
-        self._lesson_items.clear()
-        self._resource_items.clear()
+        with self._cache_lock:
+            self._lesson_snapshots.clear()
+            self._lesson_items.clear()
+            self._resource_items.clear()
         self._asset_client.close()
         self._client.close()
 
@@ -553,11 +556,12 @@ class EdProvider:
                 )
             )
 
-        if staged_resources is not None:
-            self._replace_course_cache(self._resource_items, course_id, staged_resources)
-        if staged_lessons is not None and staged_snapshots is not None:
-            self._replace_course_cache(self._lesson_items, course_id, staged_lessons)
-            self._replace_course_cache(self._lesson_snapshots, course_id, staged_snapshots)
+        with self._cache_lock:
+            if staged_resources is not None:
+                self._replace_course_cache(self._resource_items, course_id, staged_resources)
+            if staged_lessons is not None and staged_snapshots is not None:
+                self._replace_course_cache(self._lesson_items, course_id, staged_lessons)
+                self._replace_course_cache(self._lesson_snapshots, course_id, staged_snapshots)
 
         return ContentBatch(
             provider=self.provider_name,

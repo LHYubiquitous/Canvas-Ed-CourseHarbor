@@ -43,6 +43,7 @@ class SetupControllerTests(unittest.TestCase):
         }
         self.temp = tempfile.TemporaryDirectory()
         self.output_root = Path(self.temp.name).resolve() / "Courses"
+        self.output_root.mkdir()
         self.controller = SetupController(
             profile="default",
             output_root=self.output_root,
@@ -143,7 +144,7 @@ class SetupControllerTests(unittest.TestCase):
         mapping = self.controller.mapping_choices[0]
         self.assertEqual("COMP2017-local", mapping.folder)
 
-    def test_review_is_exact_and_does_not_write_configuration(self) -> None:
+    def test_review_is_exact_and_does_not_write_course_folders(self) -> None:
         self._select_pair()
         self.controller.open_mapping()
         match = self.controller.pending_matches[0]
@@ -156,7 +157,8 @@ class SetupControllerTests(unittest.TestCase):
         self.assertEqual(1, review.course_count)
         self.assertEqual(2, review.source_count)
         self.assertIn("COMP2017-2026-S1", review.plan.preview)
-        self.assertFalse(self.output_root.exists())
+        self.assertTrue(self.output_root.is_dir())
+        self.assertEqual([], list(self.output_root.iterdir()))
 
         self.controller.back()
         self.controller.set_course_override(
@@ -199,6 +201,82 @@ class SetupControllerTests(unittest.TestCase):
 
     def test_controller_does_not_expose_mutable_session(self) -> None:
         self.assertFalse(hasattr(self.controller, "session"))
+
+    def test_course_folder_picker_accepts_only_direct_library_children(self) -> None:
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        selected = self.output_root / "COMP2017 Desktop"
+        selected.mkdir()
+        nested = selected / "nested"
+        nested.mkdir()
+        outside = Path(self.temp.name).resolve() / "outside"
+        outside.mkdir()
+
+        self.assertEqual(self.output_root, self.controller.output_root)
+        self.assertEqual(
+            "COMP2017 Desktop",
+            self.controller.folder_name_for_selected_directory(selected),
+        )
+        with self.assertRaisesRegex(ValueError, "directly inside"):
+            self.controller.folder_name_for_selected_directory(nested)
+        with self.assertRaisesRegex(ValueError, "directly inside"):
+            self.controller.folder_name_for_selected_directory(outside)
+        with self.assertRaisesRegex(ValueError, "existing folder"):
+            self.controller.folder_name_for_selected_directory(
+                self.output_root / "missing"
+            )
+
+    def test_library_root_change_is_reviewed_and_preserves_course_choices(self) -> None:
+        self._select_pair()
+        self.controller.open_mapping()
+        match = self.controller.pending_matches[0]
+        self.controller.link_match(match.match_id, logical_key="COMP2017-2026-S1")
+        self.controller.open_folders()
+        self.controller.set_folder_overrides(
+            {"COMP2017-2026-S1": "COMP2017 Desktop"}
+        )
+        original = self.controller.build_review()
+        self.controller.back()
+        new_root = (Path(self.temp.name) / "Desktop").resolve()
+        new_root.mkdir()
+
+        self.assertEqual(new_root, self.controller.library_root_for_selected_directory(new_root))
+        self.assertTrue(self.controller.set_output_root(new_root))
+
+        self.assertEqual(ReviewState.STALE, self.controller.review_state)
+        self.assertEqual(
+            "COMP2017 Desktop", self.controller.mapping_choices[0].folder
+        )
+        refreshed = self.controller.build_review()
+        self.assertEqual(new_root, refreshed.plan.config.output_root)
+        self.assertNotEqual(original.revision, refreshed.revision)
+
+        with self.assertRaisesRegex(ValueError, "absolute"):
+            self.controller.set_output_root(Path("relative"))
+        self.assertEqual(new_root, self.controller.output_root)
+        self.assertFalse(self.controller.set_output_root(new_root / "."))
+
+    def test_review_requires_existing_library_root_and_can_recover(self) -> None:
+        self._select_pair()
+        self.controller.open_mapping()
+        self.controller.link_match(
+            self.controller.pending_matches[0].match_id,
+            logical_key="COMP2017-2026-S1",
+        )
+        self.controller.open_folders()
+        missing_root = (Path(self.temp.name) / "Missing library").resolve()
+        self.assertTrue(self.controller.set_output_root(missing_root))
+
+        with self.assertRaisesRegex(ValueError, "existing folder"):
+            self.controller.build_review()
+        self.assertEqual(SetupStep.FOLDERS, self.controller.step)
+
+        recovered_root = (Path(self.temp.name) / "Desktop").resolve()
+        recovered_root.mkdir()
+        self.controller.set_output_root(
+            self.controller.library_root_for_selected_directory(recovered_root)
+        )
+        review = self.controller.build_review()
+        self.assertEqual(recovered_root, review.plan.config.output_root)
 
     def test_defaults_change_marks_existing_review_stale(self) -> None:
         self._select_pair()

@@ -7,6 +7,7 @@ core application remains usable without the desktop extra installed.
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from canvas_ed_mcp.application.setup_controller import SetupController
@@ -22,8 +23,10 @@ __all__ = [
 def build_config_saving_setup_window(
     controller: SetupController,
     config_path: Path,
+    *,
+    dashboard_opener: Callable[[str, Path], bool] | None = None,
 ) -> Any:
-    """Compose the formal setup window with its config-only save capability."""
+    """Compose setup with reviewed config and course-folder provisioning."""
 
     from canvas_ed_mcp.application.setup_workflow import ConfigOnlySetupSaver
 
@@ -32,6 +35,7 @@ def build_config_saving_setup_window(
     return SetupWindow(
         controller,
         save_port=ConfigOnlySetupSaver(controller, config_path),
+        dashboard_opener=dashboard_opener,
     )
 
 

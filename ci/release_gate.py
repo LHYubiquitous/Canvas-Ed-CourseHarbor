@@ -51,8 +51,10 @@ _REQUIRED_PUBLIC_FILES = frozenset(
         "uv.lock",
     }
 )
-_PUBLIC_PREFIXES = ("ci/", "docs/", "src/", "tests/")
-_PUBLIC_SUFFIXES = frozenset({".json", ".md", ".py", ".toml", ".yml"})
+_PUBLIC_PREFIXES = ("ci/", "docs/", "packaging/", "src/", "tests/")
+_PUBLIC_SUFFIXES = frozenset(
+    {".ico", ".json", ".md", ".png", ".py", ".spec", ".toml", ".yml"}
+)
 _EXCLUDED_PUBLIC_FILES = frozenset(
     {
         "docs/CANVAS_SYNC_MANUAL_TEST.md",
@@ -125,11 +127,11 @@ _VOLATILE_QUERY_NAMES = frozenset(
 )
 _SAFE_LITERAL_VALUES = frozenset(
     {
-    b"[redacted]",
-    b"example",
-    b"placeholder",
-    b"synthetic",
-    b"synthetic-canary",
+        b"[redacted]",
+        b"example",
+        b"placeholder",
+        b"synthetic",
+        b"synthetic-canary",
     }
 )
 

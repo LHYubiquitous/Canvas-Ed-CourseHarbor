@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -17,6 +18,8 @@ from .engine import (
     ExecutionMode,
     RunTransactionResult,
     SourceSyncResult,
+    SourceTransactionResult,
+    StateCommitResult,
     apply_source_transaction,
     classify_source_checkpoint,
     sync_course_source,
@@ -313,6 +316,7 @@ def build_reviewed_sync_plan(
     providers: Mapping[tuple[str, str], CourseContentProvider],
     config_snapshot: bytes | None = None,
     cancellation_requested: Callable[[], bool] | None = None,
+    source_completed: Callable[[int, int], None] | None = None,
 ) -> ReviewedSyncPlan:
     """Discover once and seal safe metadata plus dry-run decisions."""
 
@@ -336,10 +340,7 @@ def build_reviewed_sync_plan(
     state, state_revision = _load_state_snapshot(
         state_path, profile=profile, output_root=output_root
     )
-    plans: list[ReviewedSourcePlan] = []
     for course, source in selections:
-        if _cancelled(cancellation_requested):
-            raise ReviewedSyncCancelled("reviewed sync discovery cancelled")
         identity = (source.provider, source.instance)
         provider = providers.get(identity)
         if (
@@ -348,6 +349,14 @@ def build_reviewed_sync_plan(
             or provider.instance != source.instance
         ):
             raise ValueError("providers must cover each exact source identity")
+
+    def discover(
+        selection: tuple[CourseConfig, CourseSource],
+    ) -> ReviewedSourcePlan:
+        course, source = selection
+        if _cancelled(cancellation_requested):
+            raise ReviewedSyncCancelled("reviewed sync discovery cancelled")
+        provider = providers[(source.provider, source.instance)]
         previous, initialized, skips, reconciliation_required = _source_state_context(
             state, course=course, source=source
         )
@@ -363,8 +372,6 @@ def build_reviewed_sync_plan(
             reconciliation_required=reconciliation_required,
             policy_skips=skips,
         )
-        if "provider_discovery_failed" in preview.issue_codes:
-            raise RuntimeError("provider discovery failed")
         batch = capturing.batch or ContentBatch(
             source.provider,
             source.instance,
@@ -374,7 +381,26 @@ def build_reviewed_sync_plan(
             (),
             (),
         )
-        plans.append(ReviewedSourcePlan(course, source, batch, preview))
+        return ReviewedSourcePlan(course, source, batch, preview)
+
+    ordered_plans: list[ReviewedSourcePlan | None] = [None] * len(selections)
+    with ThreadPoolExecutor(max_workers=min(4, len(selections))) as executor:
+        futures = {
+            executor.submit(discover, selection): index
+            for index, selection in enumerate(selections)
+        }
+        completed = 0
+        for future in as_completed(futures):
+            if _cancelled(cancellation_requested):
+                raise ReviewedSyncCancelled("reviewed sync discovery cancelled")
+            ordered_plans[futures[future]] = future.result()
+            completed += 1
+            if source_completed is not None:
+                try:
+                    source_completed(completed, len(selections))
+                except Exception:
+                    pass
+    plans = [plan for plan in ordered_plans if plan is not None]
     return ReviewedSyncPlan(
         profile,
         config_path,
@@ -448,6 +474,23 @@ def apply_reviewed_sync_plan(
                 return RunTransactionResult(
                     tuple(completed), "operation_cancelled", index
                 )
+            if "provider_discovery_failed" in entry.preview.issue_codes:
+                completed.append(
+                    SourceTransactionResult(
+                        SourceSyncResult(
+                            entry.preview.course_key,
+                            entry.preview.provider,
+                            (),
+                            entry.preview.state_updates,
+                            entry.preview.issue_codes,
+                            entry.preview.initialization_complete,
+                            entry.preview.policy_skips,
+                            ExecutionMode.APPLY,
+                        ),
+                        StateCommitResult(state, True),
+                    )
+                )
+                continue
             identity = (entry.source.provider, entry.source.instance)
             provider = providers.get(identity)
             if (

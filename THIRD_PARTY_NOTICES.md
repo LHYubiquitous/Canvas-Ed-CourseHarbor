@@ -33,3 +33,9 @@ The optional `gui` extra installs Qt for Python. It is disabled by default. Anyo
 redistributing a frozen or bundled GUI must separately preserve the applicable Qt
 license notices and replacement/relinking rights; this source dependency inventory is
 not by itself a frozen-application compliance packet.
+
+The unpublished Windows onedir spike is built with PyInstaller 6.22.3, whose installed
+metadata describes its license as GPLv2-or-later with a special exception permitting
+distribution of applications built with PyInstaller. Any redistributed executable must
+carry the applicable PyInstaller and bundled-dependency notices. The current local spike
+is not a redistribution compliance packet.

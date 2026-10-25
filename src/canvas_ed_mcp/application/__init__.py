@@ -1,5 +1,11 @@
 """Framework-neutral application-service contracts and helpers."""
 
+from .app_startup import (
+    StartupDestination,
+    StartupPlan,
+    StartupProfile,
+    plan_app_startup,
+)
 from .contracts import (
     ApplicationIssue,
     CancellationToken,
@@ -10,6 +16,16 @@ from .contracts import (
     ProgressPhase,
     ReviewProof,
     SecretValue,
+)
+from .credentials import (
+    CredentialController,
+    CredentialInspection,
+    CredentialMode,
+    CredentialOperationResult,
+    CredentialPresence,
+    CredentialTarget,
+    NativeCredentialStore,
+    credential_reference,
 )
 from .fingerprints import (
     MISSING_REVISION,
@@ -34,6 +50,7 @@ from .daily_sync import (
     DailySyncState,
     ProgressCallback,
     SyncApplyResult,
+    SyncItemSummary,
     SyncOperationPort,
     SyncPreviewRequest,
     SyncPreviewResult,
@@ -45,7 +62,19 @@ from .profile_status import (
     ProviderOverview,
     inspect_profile_overview,
 )
+from .profile_lifecycle import (
+    ProfileLifecycleService,
+    ProfileRemovalResult,
+    ProfileRemovalReview,
+    ProfileRemovalReviewResult,
+)
 from .sync_operation import ReviewedSyncOperation
+from .sync_reports import (
+    SyncCourseReport,
+    SyncReportItem,
+    SyncReportStore,
+    SyncRunReport,
+)
 from .setup_controller import (
     CourseMatch,
     MappingDecision,
@@ -58,6 +87,9 @@ from .setup_workflow import ConfigOnlySetupSaver, SetupSavePort
 
 __all__ = [
     "ApplicationIssue",
+    "StartupDestination",
+    "StartupPlan",
+    "StartupProfile",
     "CancellationToken",
     "IssueSeverity",
     "MISSING_REVISION",
@@ -67,6 +99,14 @@ __all__ = [
     "ProgressPhase",
     "ReviewProof",
     "SecretValue",
+    "CredentialController",
+    "CredentialInspection",
+    "CredentialMode",
+    "CredentialOperationResult",
+    "CredentialPresence",
+    "CredentialTarget",
+    "NativeCredentialStore",
+    "credential_reference",
     "bytes_revision",
     "canonical_sha256",
     "file_revision",
@@ -82,15 +122,24 @@ __all__ = [
     "DailySyncState",
     "ProgressCallback",
     "SyncApplyResult",
+    "SyncItemSummary",
     "SyncOperationPort",
     "SyncPreviewRequest",
     "SyncPreviewResult",
     "SyncReview",
     "SyncSourceSummary",
     "ProfileOverview",
+    "ProfileLifecycleService",
+    "ProfileRemovalResult",
+    "ProfileRemovalReview",
+    "ProfileRemovalReviewResult",
     "ProviderOverview",
     "inspect_profile_overview",
     "ReviewedSyncOperation",
+    "SyncCourseReport",
+    "SyncReportItem",
+    "SyncReportStore",
+    "SyncRunReport",
     "CourseMatch",
     "MappingDecision",
     "MappingDisposition",
@@ -99,4 +148,5 @@ __all__ = [
     "suggest_course_matches",
     "ConfigOnlySetupSaver",
     "SetupSavePort",
+    "plan_app_startup",
 ]

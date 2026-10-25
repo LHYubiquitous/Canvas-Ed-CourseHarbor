@@ -58,7 +58,8 @@ Phase 0 在 2026-10-13 又增加 13 个 synthetic/mock tests；当前 Windows �
 
 ## Portable 0.2 status
 
-The current private tree targets UI candidate `0.2.0rc16`.
+The current private tree targets unreleased UI candidate `0.2.0rc17`; public
+`v0.2.0rc16` remains immutable.
 The published `v0.1.0rc1` remains a separate immutable artifact. rc10 product behavior
 completed the Windows/macOS owner review and three-system private CI. rc14 added
 non-destructive graphical reconfiguration; rc15 added the macOS button-contrast fix.
