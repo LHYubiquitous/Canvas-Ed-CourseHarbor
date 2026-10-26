@@ -20,8 +20,8 @@ Semantic Versioning; release-candidate versions are not stable API commitments.
   cross-provider Map step in both directions, while dual-provider profiles retain it.
 - Lets Connections form fields use the available width consistently across native Qt
   styles, including macOS.
-- Private CI run `40283980622` passed the complete matrix and produced the audited
-  arm64 release candidate from commit `a8064ff`.
+- Final private CI run `40293746038` passed the complete matrix and produced the
+  published audited arm64 release candidate from commit `bdcb4f7`.
 - Owner-device validation passed Finder launch, drag-install, App Shell navigation,
   profile/setup flows, Connections layout, and native Keychain save/test/replace.
 - Developer ID signing, Apple notarization, Gatekeeper acceptance, and

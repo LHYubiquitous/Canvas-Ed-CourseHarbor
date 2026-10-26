@@ -97,11 +97,11 @@ compiler/toolchain cost.
   resource, applied to source/frozen Qt applications, and retained as an exact macOS
   iconset for native `iconutil` conversion during DMG construction.
 - Windows installer, signing, SmartScreen, upgrade retention, and uninstall: `NOT_RUN`.
-- Frozen macOS `.app`/DMG automated pipeline: `PASS` on private CI run `40283980622`
-  at commit `a8064ff`. The source app and read-only mounted DMG both passed GUI/CLI
+- Frozen macOS `.app`/DMG automated pipeline: `PASS` on private CI run `40293746038`
+  at release-prep commit `bdcb4f7`. The source app and read-only mounted DMG both passed GUI/CLI
   smoke, arm64/native-link audit, confined-symlink audit, and whole-bundle ad-hoc
-  signature verification. The downloaded DMG is 118,327,239 bytes with SHA-256
-  `5ad80bdeafb1f1a2417d20db6b9a765516425fdafe0d52af37ed679260b056fe`.
+  signature verification. The published DMG is 119,297,536 bytes with SHA-256
+  `e5145075802c01159250cd5524db94fb20e0e19b121f0dd3602f66d2b8473893`.
 - macOS owner-device visible Finder launch, drag-install, and real Keychain
   save/test/replace: `PASS` on 2026-10-26. App Shell navigation, profile/setup flows,
   provider-aware Map skipping, and the Connections layout also passed visible review.

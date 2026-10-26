@@ -2,7 +2,7 @@
 
 ## 0.2.0rc18 macOS DMG candidate
 
-Status: **PASS — OWNER-VERIFIED RELEASE CANDIDATE**
+Status: **PASS — PUBLIC AND PRIVATE GITHUB PRERELEASES PUBLISHED**
 Audit date: 2026-10-26
 
 This candidate adds a native PyInstaller `.app`/DMG workflow on GitHub's standard
@@ -16,15 +16,15 @@ remain `NOT_RUN`. PyPI publication remains unauthorized.
 
 | Gate | rc18 result |
 |---|---|
-| Exact private code candidate | `PASS`: commit `a8064ff20c98e3870494f03c966b72fe291afc5f` |
-| Cross-platform tests and distributions | `PASS`: all matrix and deterministic distribution jobs in private [run 40283980622](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private/actions/runs/40283980622) |
+| Exact private release-prep source | `PASS`: commit `bdcb4f73a4de5798df4499f0392c8652926f6ae3` |
+| Cross-platform tests and distributions | `PASS`: all matrix and deterministic distribution jobs in private [run 40293746038](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private/actions/runs/40293746038) and public clean-source [run 40294791238](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/40294791238) |
 | Native macOS build | `PASS`: `macos-15` arm64, Python 3.14, PyInstaller 6.22.3 |
 | Source and mounted app audit/smoke | `PASS`: GUI startup, standalone CLI startup/version, native keyring readiness, architecture/link closure, signatures, and read-only mounted-volume rerun |
-| App inventory | `PASS`: fail-closed inventory, confined symlinks, exactly one Cocoa platform plugin, arm64 entry points, ad-hoc signature verified |
-| DMG integrity | `PASS`: 118,327,239 bytes; SHA-256 `5ad80bdeafb1f1a2417d20db6b9a765516425fdafe0d52af37ed679260b056fe`; downloaded artifact matched its manifest |
+| App inventory | `PASS`: 333 files, 120 confined symlinks, 192,450,664 bytes, exactly one Cocoa platform plugin, arm64 entry points, ad-hoc signature verified |
+| DMG integrity | `PASS`: 119,297,536 bytes; SHA-256 `e5145075802c01159250cd5524db94fb20e0e19b121f0dd3602f66d2b8473893`; uploaded asset matched its manifest and `SHA256SUMS` |
 | Developer ID / notarization / Gatekeeper | `NOT_RUN / NOT_RUN / DEGRADED` |
 | Owner-device Finder, drag-install, App Shell, setup, Connections, Keychain save/test/replace | `PASS`: owner confirmed the revised candidate on 2026-10-26 |
-| Tag, GitHub Release, public-repository update | `AUTHORIZED`: pending publication |
+| Tag, GitHub Release, public-repository update | `PASS`: private tag `bdcb4f7`; public clean-source tag `3cd73c7`; matching prereleases published in both repositories |
 | PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
 
 The CLI companion is frozen independently and installed into `Contents/MacOS` before
