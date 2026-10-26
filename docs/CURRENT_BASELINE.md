@@ -58,8 +58,8 @@ Phase 0 在 2026-10-13 又增加 13 个 synthetic/mock tests；当前 Windows �
 
 ## Portable 0.2 status
 
-The current private tree targets `0.2.0rc19`, a focused Courses-history responsiveness
-successor; public `v0.2.0rc18` remains immutable.
+The current private tree and public prerelease are `0.2.0rc19`, a focused
+Courses-history responsiveness successor; public `v0.2.0rc18` remains immutable.
 The published `v0.1.0rc1` remains a separate immutable artifact. rc10 product behavior
 completed the Windows/macOS owner review and three-system private CI. rc14 added
 non-destructive graphical reconfiguration; rc15 added the macOS button-contrast fix.

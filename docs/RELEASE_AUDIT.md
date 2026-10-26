@@ -2,7 +2,7 @@
 
 ## 0.2.0rc19 Courses history responsiveness candidate
 
-Status: **IN PROGRESS — PUBLICATION AUTHORIZED**
+Status: **PASS — PUBLIC AND PRIVATE GITHUB PRERELEASES PUBLISHED**
 Audit date: 2026-10-26
 
 This candidate fixes a Qt 6.12 accessibility-cache inconsistency in the Courses tree.
@@ -17,11 +17,11 @@ summary row for baseline-only sync runs.
 | Focused regression tests | `PASS`: baseline-only history remains expandable; repeated collapse preserves accessible child/index consistency |
 | Exact affected owner-device journey | `PASS`: owner expanded and collapsed the historical `2026-10-26 02:19:59` run without a freeze |
 | Complete synthetic suite | `PASS`: 642 tests, 6 documented Windows/macOS platform skips |
-| Deterministic source/wheel/sdist | `IN PROGRESS` |
-| Windows portable build/audit/smoke | `IN PROGRESS` |
-| macOS arm64 DMG build/audit/smoke | `IN PROGRESS`; rc19 owner-device macOS rerun `NOT_RUN` |
-| Remote private/public CI | `IN PROGRESS` |
-| GitHub tag/prerelease | `IN PROGRESS`; rc18 remains immutable |
+| Deterministic source/wheel/sdist | `PASS`: 221 / 78 / 193 entries; repeat-build digests matched |
+| Windows portable build/audit/smoke | `PASS`: 878 files, 156,591,765 bytes; frozen GUI/CLI smoke and ZIP integrity passed |
+| macOS arm64 DMG build/audit/smoke | `PASS`: 118,980,346 bytes, SHA-256 `9eb178ce1ba9a753af645a7bd24bac1a64525b81151c8fb59f7be7dcb381613a`; rc19 owner-device macOS rerun `NOT_RUN` |
+| Remote private/public CI | `PASS`: private [run 40312961018](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private/actions/runs/40312961018) and public clean-source [run 40315160119](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/actions/runs/40315160119) |
+| GitHub tag/prerelease | `PASS`: private tag target `7ea69eb212f63d1fd94aea366ad1c0d1afcd30c5`; public clean-source target `55555c463aad497e5103c92cafc06126ace46720`; matching 10-asset prereleases published in both repositories; rc18 remains immutable |
 | PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
 
 ## 0.2.0rc18 macOS DMG candidate
