@@ -59,6 +59,16 @@ class CIWorkflowTests(unittest.TestCase):
         self.assertNotIn("${{ secrets.", text)
         self.assertNotIn("requirements.txt", text)
 
+    def test_workflow_builds_a_macos_dmg_without_publishing_it(self) -> None:
+        text = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("runs-on: macos-15", text)
+        self.assertIn("ci/build_macos_dmg.py", text)
+        self.assertIn("CourseHarbor-*.dmg", text)
+        self.assertIn("actions/upload-artifact@", text)
+        self.assertIn("retention-days: 14", text)
+        self.assertNotIn("gh release upload", text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,6 @@ The repository-root ``canvas_ed_mcp.py`` remains the legacy MCP server during
 the staged migration. Installed distributions use this package instead.
 """
 
-__version__ = "0.2.0rc17"
+__version__ = "0.2.0rc18"
 
 __all__ = ["__version__"]

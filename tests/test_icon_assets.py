@@ -58,6 +58,24 @@ class IconAssetTests(unittest.TestCase):
             width, height, _color_type = _png_metadata(iconset / filename)
             self.assertEqual((size, size), (width, height))
 
+    def test_macos_spec_uses_native_icon_and_stable_bundle_identity(self) -> None:
+        text = (ROOT / "packaging" / "macos" / "courseharbor.spec").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("COURSEHARBOR_MACOS_ICON", text)
+        self.assertIn("io.github.lhyubiquitous.courseharbor", text)
+        self.assertIn('name="CourseHarbor.app"', text)
+        self.assertIn('name="courseharbor-cli"', text)
+
+    def test_macos_cli_is_a_standalone_companion_not_a_merged_executable(self) -> None:
+        text = (ROOT / "packaging" / "macos" / "courseharbor.spec").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("MERGE(", text)
+        self.assertIn("cli_analysis.binaries", text)
+        self.assertIn("cli_analysis.datas", text)
+        self.assertIn("exclude_binaries=False", text)
+
 
 if __name__ == "__main__":
     unittest.main()

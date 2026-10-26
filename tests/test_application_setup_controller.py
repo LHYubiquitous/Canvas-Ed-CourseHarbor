@@ -91,6 +91,66 @@ class SetupControllerTests(unittest.TestCase):
         self.assertEqual(SetupStep.FOLDERS, self.controller.step)
         self.assertEqual(1, len(self.controller.mapping_choices))
 
+    def test_canvas_only_workflow_skips_mapping_in_both_directions(self) -> None:
+        controller = SetupController(
+            profile="canvas-only",
+            output_root=self.output_root,
+            catalogs={"canvas": (self.canvas,), "ed": ()},
+            canvas=CanvasPlatformConfig(
+                enabled=True,
+                base_url="https://canvas.example.edu/api/v1",
+                credential="env:SYNTHETIC_CANVAS_TOKEN",
+            ),
+            ed=EdPlatformConfig(enabled=False),
+        )
+        controller.select_course(self.canvas.key)
+
+        self.assertEqual(
+            (SetupStep.SELECT, SetupStep.FOLDERS, SetupStep.REVIEW),
+            controller.navigation_steps,
+        )
+        controller.advance_from_selection()
+        self.assertEqual(SetupStep.FOLDERS, controller.step)
+        controller.back()
+        self.assertEqual(SetupStep.SELECT, controller.step)
+
+    def test_ed_only_workflow_skips_mapping_in_both_directions(self) -> None:
+        controller = SetupController(
+            profile="ed-only",
+            output_root=self.output_root,
+            catalogs={"canvas": (), "ed": (self.ed,)},
+            canvas=CanvasPlatformConfig(enabled=False),
+            ed=EdPlatformConfig(
+                enabled=True,
+                credential="env:SYNTHETIC_ED_TOKEN",
+            ),
+        )
+        controller.select_course(self.ed.key)
+
+        self.assertEqual(
+            (SetupStep.SELECT, SetupStep.FOLDERS, SetupStep.REVIEW),
+            controller.navigation_steps,
+        )
+        controller.advance_from_selection()
+        self.assertEqual(SetupStep.FOLDERS, controller.step)
+        controller.back()
+        self.assertEqual(SetupStep.SELECT, controller.step)
+
+    def test_dual_provider_workflow_keeps_mapping_when_one_source_is_selected(self) -> None:
+        self.controller.select_course(self.other.key)
+
+        self.assertEqual(
+            (
+                SetupStep.SELECT,
+                SetupStep.MAP,
+                SetupStep.FOLDERS,
+                SetupStep.REVIEW,
+            ),
+            self.controller.navigation_steps,
+        )
+        self.controller.advance_from_selection()
+        self.assertEqual(SetupStep.MAP, self.controller.step)
+
     def test_keep_separate_is_visible_and_reversible(self) -> None:
         self._select_pair()
         self.controller.open_mapping()

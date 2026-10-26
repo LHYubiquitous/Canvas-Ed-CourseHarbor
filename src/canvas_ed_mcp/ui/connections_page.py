@@ -111,6 +111,9 @@ class ConnectionsPage(QWidget):
         form.setContentsMargins(16, 16, 16, 16)
         form.setHorizontalSpacing(18)
         form.setVerticalSpacing(12)
+        form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+        )
         state = QLabel("Not configured")
         state.setObjectName("connection_state")
         form.addRow("Status", state)

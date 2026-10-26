@@ -131,3 +131,43 @@ jobs:
         run: python "${{ github.workspace }}/ci/smoke_installed.py"
       - name: Validate clean-source installation
         run: python -m pip check
+
+  macos_dmg:
+    name: Build and audit macOS arm64 DMG
+    needs: [test, build]
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install locked packaging environment
+        run: |
+          python -m pip install --upgrade pip "uv==0.11.28"
+          uv lock --check
+          uv sync --locked --all-extras
+      - name: Build, mount, smoke-test, and audit DMG
+        id: dmg
+        shell: bash
+        run: |
+          VERSION="$(uv run --locked python -c 'from ci.release_gate import read_project_version; print(read_project_version("."))')"
+          ARCH="$(uname -m)"
+          test "${ARCH}" = "arm64"
+          OUTPUT="${RUNNER_TEMP}/CourseHarbor-v${VERSION}-macos-${ARCH}.dmg"
+          uv run --locked --all-extras python -B ci/build_macos_dmg.py \
+            --root . \
+            --output "${OUTPUT}"
+          echo "artifact_name=CourseHarbor-v${VERSION}-macos-${ARCH}" >> "${GITHUB_OUTPUT}"
+      - name: Upload audited DMG candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.dmg.outputs.artifact_name }}
+          path: |
+            ${{ runner.temp }}/CourseHarbor-*.dmg
+            ${{ runner.temp }}/CourseHarbor-*.dmg.manifest.json
+          if-no-files-found: error
+          retention-days: 14

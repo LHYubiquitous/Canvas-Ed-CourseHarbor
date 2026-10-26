@@ -52,7 +52,7 @@ class ReleaseGateTests(unittest.TestCase):
         version_match = re.search(r'^__version__ = "([^"]+)"$', package_init, re.MULTILINE)
         self.assertIsNotNone(version_match)
         version = project["project"]["version"]
-        self.assertEqual("0.2.0rc17", version)
+        self.assertEqual("0.2.0rc18", version)
         self.assertEqual(version, version_match.group(1))
         development_dependencies = project["dependency-groups"]["dev"]
         runtime_dependencies = project["project"]["dependencies"]

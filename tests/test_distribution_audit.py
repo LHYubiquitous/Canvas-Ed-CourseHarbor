@@ -112,6 +112,24 @@ class DistributionAuditTests(unittest.TestCase):
 
             audit_archive(sdist)
 
+    def test_sdist_allows_only_the_reviewed_macos_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            reviewed = root / "reviewed.tar.gz"
+            self._write_sdist(
+                reviewed,
+                (("packaging/macos/courseharbor.spec", b"synthetic"),),
+            )
+            audit_archive(reviewed)
+
+            unreviewed = root / "unreviewed.tar.gz"
+            self._write_sdist(
+                unreviewed,
+                (("packaging/macos/unknown.spec", b"synthetic"),),
+            )
+            with self.assertRaisesRegex(AuditError, "unallowlisted"):
+                audit_archive(unreviewed)
+
     def test_sdist_rejects_links_and_path_traversal(self) -> None:
         for unsafe, link in (("../escape.txt", False), ("linked-secret", True)):
             with self.subTest(unsafe=unsafe), tempfile.TemporaryDirectory() as temporary:

@@ -12,6 +12,7 @@ README.zh-CN.md
 SECURITY.md
 THIRD_PARTY_NOTICES.md
 ci/__init__.py
+ci/build_macos_dmg.py
 ci/build_release_candidate.py
 ci/build_windows_portable.py
 ci/macos_keychain_canary.py
@@ -20,6 +21,7 @@ ci/release_gate.py
 ci/run_release_tests.py
 ci/smoke_installed.py
 ci/verify_distribution.py
+ci/verify_macos_bundle.py
 ci/verify_release_metadata.py
 ci/verify_windows_portable.py
 docs/ARCHITECTURE.md
@@ -57,6 +59,7 @@ packaging/macos/courseharbor.iconset/icon_32x32.png
 packaging/macos/courseharbor.iconset/icon_32x32@2x.png
 packaging/macos/courseharbor.iconset/icon_512x512.png
 packaging/macos/courseharbor.iconset/icon_512x512@2x.png
+packaging/macos/courseharbor.spec
 packaging/windows/courseharbor.ico
 packaging/windows/courseharbor.spec
 packaging/windows/courseharbor_cli.py
@@ -185,6 +188,8 @@ tests/test_gradescope_provider.py
 tests/test_gui_entrypoint_metadata.py
 tests/test_html_renderer.py
 tests/test_icon_assets.py
+tests/test_macos_bundle_audit.py
+tests/test_macos_dmg_build.py
 tests/test_macos_release_matrix.py
 tests/test_mcp_protocol.py
 tests/test_mcp_v2_evaluation.py

@@ -348,6 +348,71 @@ class SetupWindowTests(unittest.TestCase):
         self.assertEqual(SetupStep.FOLDERS, self.controller.step)
         self.assertEqual(1, self.window.folder_table.rowCount())
 
+    def test_canvas_only_profile_hides_and_skips_map_step(self) -> None:
+        self._dispose_window()
+        controller = SetupController(
+            profile="canvas-only",
+            output_root=self.output_root,
+            catalogs={"canvas": (self.canvas,), "ed": ()},
+            canvas=CanvasPlatformConfig(
+                enabled=True,
+                base_url="https://canvas.example.edu/api/v1",
+                credential="env:SYNTHETIC_CANVAS_TOKEN",
+            ),
+            ed=EdPlatformConfig(enabled=False),
+        )
+        self.window = self.SetupWindow(controller)
+        self.window.set_course_checked(self.canvas.key, True)
+
+        self.assertTrue(self.window.step_labels[1].isHidden())
+        self.assertEqual(
+            ("1", "2", "3"),
+            tuple(
+                number.text()
+                for number in self.window.step_numbers
+                if not number.isHidden()
+            ),
+        )
+        self.assertEqual(
+            "Continue to folders (1 selected)",
+            self.window.continue_button.text(),
+        )
+
+        self.window.continue_button.click()
+        self.assertEqual(SetupStep.FOLDERS, controller.step)
+        self.assertEqual(2, self.window.page_stack.currentIndex())
+        self.window.back_button.click()
+        self.assertEqual(SetupStep.SELECT, controller.step)
+
+    def test_bulk_selection_ignores_visible_disabled_provider_rows(self) -> None:
+        self._dispose_window()
+        controller = SetupController(
+            profile="canvas-only",
+            output_root=self.output_root,
+            catalogs={"canvas": (self.canvas,), "ed": (self.ed,)},
+            canvas=CanvasPlatformConfig(
+                enabled=True,
+                base_url="https://canvas.example.edu/api/v1",
+                credential="env:SYNTHETIC_CANVAS_TOKEN",
+            ),
+            ed=EdPlatformConfig(enabled=False),
+        )
+        self.window = self.SetupWindow(controller)
+
+        canvas_item = self.window.course_model.item(0, 0)
+        ed_item = self.window.course_model.item(1, 0)
+        self.assertTrue(canvas_item.isCheckable())
+        self.assertFalse(ed_item.isCheckable())
+
+        self.window.select_visible_button.click()
+        self.assertEqual(1, controller.selected_count)
+        self.assertEqual("Clear visible", self.window.select_visible_button.text())
+        self.window.select_visible_button.click()
+        self.assertEqual(0, controller.selected_count)
+        self.assertEqual(
+            "Select all visible", self.window.select_visible_button.text()
+        )
+
     def test_map_has_pending_linked_separate_and_reversible_actions(self) -> None:
         self._select_pair()
         self.window.continue_button.click()

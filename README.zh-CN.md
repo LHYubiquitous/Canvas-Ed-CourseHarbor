@@ -6,11 +6,12 @@ CourseHarbor 是面向学生的本地桌面工具，可从 Canvas、Ed 或两者
 生成本周截止日期 TXT 与全学期 Markdown 清单，并为已确认的课程提供只读 MCP 工具。
 它只向本地输出目录写文件，不会在 Canvas 或 Ed 上提交、编辑或删除内容。
 
-`0.2.0rc17` 是当前 GitHub prerelease。请从
-[v0.2.0rc17 Release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc17)
-下载经过审核的 `canvas_ed_mcp-0.2.0rc17-py3-none-any.whl`；本项目尚未发布到 PyPI。
+`0.2.0rc18` 是当前 GitHub prerelease。请从
+[v0.2.0rc18 Release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18)
+下载经过审核的 `canvas_ed_mcp-0.2.0rc18-py3-none-any.whl`；本项目尚未发布到 PyPI。
 本版本包含图形化 token 管理、CourseHarbor App Shell、due-date 页面、sync-run reports，
-以及下文所述经过审核的 Windows portable bundle。
+以及下文所述经过审核的 Windows portable bundle 和经 owner-device 测试的 arm64 macOS
+DMG。该 DMG 使用 ad-hoc signing，尚未经过 Apple notarization。
 
 ## 1. 安装
 
@@ -21,7 +22,7 @@ CourseHarbor 是面向学生的本地桌面工具，可从 Canvas、Ed 或两者
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc17-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
 .\.venv\Scripts\canvas-ed-mcp.exe --version
 .\.venv\Scripts\Activate.ps1
 ```
@@ -32,7 +33,7 @@ py -m venv .venv
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc17-py3-none-any.whl
+./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
 source ./.venv/bin/activate
 canvas-ed-mcp --version
 ```
@@ -195,9 +196,12 @@ courseharbor
 profile 或某个 profile 需要修复时，会显示本地 Profile chooser。这个检查只读取本地
 config/state metadata，不连接 Canvas 或 Ed。`canvas-ed-app --profile default` 继续用于
 指定 profile 和恢复场景。安装生成的 `courseharbor` GUI entry point 在正常 Windows 启动时
-不打开控制台；public `v0.2.0rc17` GitHub prerelease 包含 self-contained Windows onedir
-candidate，已通过自动 startup/relocation checks 与 owner-confirmed visible journey。
-signed installer 与 upgrade/uninstall 仍为 `NOT_RUN`。
+不打开控制台；public `v0.2.0rc18` GitHub prerelease 包含 self-contained Windows onedir
+bundle，已通过自动 startup/relocation checks 与 owner-confirmed visible journey。
+同时提供的 arm64 macOS DMG 已通过 owner-device Finder、drag-install、App Shell、setup、
+Connections 与真实 Keychain save/test/replace 检查。该 DMG 仅为 ad-hoc signed、尚未
+notarize，Gatekeeper 仍为 `DEGRADED`。signed installer
+与 upgrade/uninstall 仍为 `NOT_RUN`。
 
 同一个窗口可以进入 Library、Due dates、Courses、Connections、Health & About，并可直接
 Open local library。Library 保留异步 reviewed preview/apply 边界；course-material discovery

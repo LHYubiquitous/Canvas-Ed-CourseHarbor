@@ -66,6 +66,14 @@ class FrozenRuntimeTests(unittest.TestCase):
         self.assertEqual("CourseHarbor.exe", gui.name)
         self.assertEqual("courseharbor-cli.exe", cli.name)
 
+        mac_gui, mac_cli = frozen_companion_executables(
+            "/Applications/CourseHarbor.app/Contents/MacOS/CourseHarbor",
+            platform="darwin",
+        )
+        self.assertEqual("CourseHarbor", mac_gui.name)
+        self.assertEqual("courseharbor-cli", mac_cli.name)
+        self.assertEqual(mac_gui.parent, mac_cli.parent)
+
 
 if __name__ == "__main__":
     unittest.main()

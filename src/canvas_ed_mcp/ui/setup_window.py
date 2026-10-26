@@ -264,6 +264,7 @@ class SetupWindow(QMainWindow):
         layout.setSpacing(6)
         self.step_labels: list[QLabel] = []
         self.step_numbers: list[QLabel] = []
+        self.step_dividers: list[QFrame] = []
         for index, label_text in enumerate(_STEP_LABELS, start=1):
             number = QLabel(str(index))
             number.setObjectName("step_number")
@@ -278,6 +279,7 @@ class SetupWindow(QMainWindow):
                 divider = QFrame()
                 divider.setObjectName("step_divider")
                 divider.setFrameShape(QFrame.Shape.HLine)
+                self.step_dividers.append(divider)
                 layout.addWidget(divider, 1)
         return rail
 
@@ -474,8 +476,14 @@ class SetupWindow(QMainWindow):
         self._refresh_navigation()
 
     def _toggle_visible_selection(self) -> None:
-        visible = self.controller.visible_rows
-        all_selected = bool(visible) and all(row.selected for row in visible)
+        selectable = tuple(
+            row
+            for row in self.controller.visible_rows
+            if self.controller.course_selectable(row.candidate_key)
+        )
+        all_selected = bool(selectable) and all(
+            row.selected for row in selectable
+        )
         self._run_action(
             self.controller.clear_visible
             if all_selected
@@ -526,7 +534,8 @@ class SetupWindow(QMainWindow):
             self.course_model.removeRows(0, self.course_model.rowCount())
             for row in self.controller.visible_rows:
                 code = QStandardItem(row.code or "—")
-                code.setCheckable(True)
+                selectable = self.controller.course_selectable(row.candidate_key)
+                code.setCheckable(selectable)
                 code.setCheckState(
                     Qt.CheckState.Checked if row.selected else Qt.CheckState.Unchecked
                 )
@@ -539,6 +548,11 @@ class SetupWindow(QMainWindow):
                 )
                 for item in (code, name, term, provider):
                     item.setEditable(False)
+                    if not selectable:
+                        item.setToolTip(
+                            "This provider is disabled. Reconfigure Connections "
+                            "before selecting this course."
+                        )
                 self.course_model.appendRow((code, name, term, provider))
         finally:
             self._updating_courses = False
@@ -549,13 +563,18 @@ class SetupWindow(QMainWindow):
         noun = "course" if count == 1 else "courses"
         self.selected_count_label.setText(f"Selected {count} {noun}")
         visible = self.controller.visible_rows
-        all_selected = bool(visible) and all(row.selected for row in visible)
+        selectable = tuple(
+            row
+            for row in visible
+            if self.controller.course_selectable(row.candidate_key)
+        )
+        all_selected = bool(selectable) and all(row.selected for row in selectable)
         self.toggle_visible_checkbox.blockSignals(True)
         self.toggle_visible_checkbox.setChecked(all_selected)
         self.toggle_visible_checkbox.setText(
             "Clear visible" if all_selected else "Select all visible"
         )
-        self.toggle_visible_checkbox.setEnabled(bool(visible))
+        self.toggle_visible_checkbox.setEnabled(bool(selectable))
         self.toggle_visible_checkbox.blockSignals(False)
 
     # ---- Map ----------------------------------------------------------
@@ -1857,7 +1876,7 @@ class SetupWindow(QMainWindow):
             self._request_config_save()
             return
         action_by_step: dict[SetupStep, Callable[[], object]] = {
-            SetupStep.SELECT: self.controller.open_mapping,
+            SetupStep.SELECT: self.controller.advance_from_selection,
             SetupStep.MAP: self.controller.open_folders,
             SetupStep.FOLDERS: self._build_review_from_folder_inputs,
         }
@@ -1923,10 +1942,12 @@ class SetupWindow(QMainWindow):
         self._refresh_navigation()
 
     def _refresh_navigation(self) -> None:
-        step_index = _STEP_ORDER.index(self.controller.step)
+        page_index = _STEP_ORDER.index(self.controller.step)
+        navigation_steps = self.controller.navigation_steps
+        step_index = navigation_steps.index(self.controller.step)
         previous_index = self.page_stack.currentIndex()
-        self.page_stack.setCurrentIndex(step_index)
-        if previous_index != step_index:
+        self.page_stack.setCurrentIndex(page_index)
+        if previous_index != page_index:
             self._focus_timer.start(0)
         self.back_button.setEnabled(step_index > 0)
         continue_enabled = self.controller.step is not SetupStep.REVIEW
@@ -1944,6 +1965,9 @@ class SetupWindow(QMainWindow):
                 SetupStep.SELECT: (
                     "Continue with no active courses"
                     if self._mode == "configure" and self.controller.selected_count == 0
+                    else "Continue to folders "
+                    f"({self.controller.selected_count} selected)"
+                    if not self.controller.mapping_required
                     else "Continue with 1 selected course"
                     if self.controller.selected_count == 1
                     else "Review mapping suggestions "
@@ -1962,9 +1986,17 @@ class SetupWindow(QMainWindow):
                 ),
             }[self.controller.step]
         )
-        for index, (number, label) in enumerate(
+        for physical_index, (number, label) in enumerate(
             zip(self.step_numbers, self.step_labels)
         ):
+            represented_step = _STEP_ORDER[physical_index]
+            visible = represented_step in navigation_steps
+            number.setVisible(visible)
+            label.setVisible(visible)
+            if not visible:
+                continue
+            index = navigation_steps.index(represented_step)
+            number.setText(str(index + 1))
             state = (
                 "complete"
                 if index < step_index
@@ -1976,6 +2008,9 @@ class SetupWindow(QMainWindow):
                 widget.setProperty("stepState", state)
                 widget.style().unpolish(widget)
                 widget.style().polish(widget)
+        show_mapping = SetupStep.MAP in navigation_steps
+        for index, divider in enumerate(self.step_dividers):
+            divider.setVisible(show_mapping or index != 1)
 
     def _focus_current_step(self) -> None:
         """Move focus into a newly opened page without disrupting same-page edits."""

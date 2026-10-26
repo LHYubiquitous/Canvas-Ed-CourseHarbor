@@ -176,6 +176,40 @@ class SetupController:
         return self._step
 
     @property
+    def enabled_course_providers(self) -> tuple[str, ...]:
+        """Return the providers that shape the setup journey."""
+
+        return tuple(
+            provider
+            for provider, enabled in (
+                ("canvas", self._session.canvas_platform.enabled),
+                ("ed", self._session.ed_platform.enabled),
+            )
+            if enabled
+        )
+
+    @property
+    def mapping_required(self) -> bool:
+        """Whether the workflow can pair sources across providers."""
+
+        # Preserve the existing fail-closed journey for malformed zero-provider
+        # drafts. Exactly one enabled provider is the only supported shortcut.
+        return len(self.enabled_course_providers) != 1
+
+    @property
+    def navigation_steps(self) -> tuple[SetupStep, ...]:
+        """Return the user-visible steps for the active provider shape."""
+
+        if not self.mapping_required:
+            return (SetupStep.SELECT, SetupStep.FOLDERS, SetupStep.REVIEW)
+        return (
+            SetupStep.SELECT,
+            SetupStep.MAP,
+            SetupStep.FOLDERS,
+            SetupStep.REVIEW,
+        )
+
+    @property
     def filters(self) -> CatalogFilter:
         return self._filters
 
@@ -309,6 +343,14 @@ class SetupController:
         except KeyError as exc:
             raise ValueError("course key is not in the discovered catalog") from exc
 
+    def course_selectable(self, candidate_key: str) -> bool:
+        """Whether a catalog row belongs to an enabled provider."""
+
+        enabled = self.enabled_course_providers
+        if len(enabled) != 1:
+            return True
+        return self.course(candidate_key).provider in enabled
+
     def _selected_match(self, match: CourseMatch) -> bool:
         selected = set(self.selected_course_keys)
         return match.canvas_key in selected and match.ed_key in selected
@@ -402,6 +444,11 @@ class SetupController:
             raise ValueError("course key is not in the discovered catalog") from exc
 
     def select_course(self, candidate_key: str) -> bool:
+        if not self.course_selectable(candidate_key):
+            raise ValueError(
+                "This course belongs to a disabled provider. "
+                "Reconfigure Connections before selecting it."
+            )
         return self._session.select(self._require_course_key(candidate_key))
 
     def deselect_course(self, candidate_key: str) -> bool:
@@ -430,7 +477,12 @@ class SetupController:
         return self._session.deselect(identity)
 
     def select_visible(self) -> int:
-        return self._session.select_visible(self._filters)
+        keys = tuple(
+            row.candidate_key
+            for row in self.visible_rows
+            if self.course_selectable(row.candidate_key)
+        )
+        return sum(int(self.select_course(key)) for key in keys)
 
     def clear_visible(self) -> int:
         keys = tuple(row.candidate_key for row in self.visible_rows if row.selected)
@@ -559,6 +611,20 @@ class SetupController:
             raise ValueError("select at least one course before mapping")
         self._step = SetupStep.MAP
 
+    def advance_from_selection(self) -> None:
+        """Open the next visible step after course selection."""
+
+        self.open_mapping()
+        if self.mapping_required:
+            return
+        try:
+            self.open_folders()
+        except Exception:
+            # Never leave the controller on a Map step omitted by the active
+            # workflow projection.
+            self._step = SetupStep.SELECT
+            raise
+
     def open_folders(self) -> None:
         if self._step is not SetupStep.MAP:
             raise ValueError("folder settings are available after mapping")
@@ -580,7 +646,9 @@ class SetupController:
     def back(self) -> None:
         previous = {
             SetupStep.MAP: SetupStep.SELECT,
-            SetupStep.FOLDERS: SetupStep.MAP,
+            SetupStep.FOLDERS: (
+                SetupStep.MAP if self.mapping_required else SetupStep.SELECT
+            ),
             SetupStep.REVIEW: SetupStep.FOLDERS,
         }
         try:

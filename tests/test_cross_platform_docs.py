@@ -24,7 +24,7 @@ class CrossPlatformDocumentationTests(unittest.TestCase):
         self.assertEqual(sorted(positions), positions)
 
         for required in (
-            "canvas_ed_mcp-0.2.0rc17-py3-none-any.whl",
+            "canvas_ed_mcp-0.2.0rc18-py3-none-any.whl",
             "python -m keyring set canvas-ed-mcp/default canvas",
             "canvas-ed-mcp setup --profile default --dry-run",
             "course_material_sync",

@@ -23,6 +23,7 @@ from canvas_ed_mcp.config import (
     CourseSource,
     EdPlatformConfig,
     PlatformsConfig,
+    RetiredCourseSource,
     load_config,
     save_config,
 )
@@ -78,6 +79,82 @@ def fixture(root: Path, *, allowed: bool) -> tuple[AppConfig, dict[str, tuple[Co
 
 
 class ConfigureControllerTests(unittest.TestCase):
+    def test_single_provider_configure_skips_mapping_with_or_without_courses(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = (Path(temporary) / "Courses").resolve()
+            current, catalogs, eligibility = fixture(root, allowed=True)
+            canvas_source = current.courses[0].sources[0]
+            current = current.model_copy(
+                update={
+                    "platforms": PlatformsConfig(
+                        canvas=current.platforms.canvas,
+                        ed=EdPlatformConfig(enabled=False),
+                    ),
+                    "courses": (
+                        current.courses[0].model_copy(
+                            update={"sources": (canvas_source,)}
+                        ),
+                    ),
+                }
+            )
+            controller = ConfigureController(
+                current=current,
+                catalogs={"canvas": catalogs["canvas"], "ed": ()},
+                eligibility=(eligibility[0],),
+            )
+
+            self.assertEqual(
+                (SetupStep.SELECT, SetupStep.FOLDERS, SetupStep.REVIEW),
+                controller.navigation_steps,
+            )
+            controller.advance_from_selection()
+            self.assertEqual(SetupStep.FOLDERS, controller.step)
+            controller.back()
+            self.assertEqual(SetupStep.SELECT, controller.step)
+
+            controller.deselect_course(catalogs["canvas"][0].key)
+            controller.advance_from_selection()
+            self.assertEqual(SetupStep.FOLDERS, controller.step)
+
+    def test_disabled_provider_retired_source_remains_visible_but_not_selectable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = (Path(temporary) / "Courses").resolve()
+            current, catalogs, eligibility = fixture(root, allowed=True)
+            canvas_source, ed_source = current.courses[0].sources
+            current = current.model_copy(
+                update={
+                    "platforms": PlatformsConfig(
+                        canvas=current.platforms.canvas,
+                        ed=EdPlatformConfig(enabled=False),
+                    ),
+                    "courses": (
+                        current.courses[0].model_copy(
+                            update={"sources": (canvas_source,)}
+                        ),
+                    ),
+                    "retired_sources": (
+                        RetiredCourseSource(
+                            source=ed_source,
+                            former_course_key=current.courses[0].key,
+                        ),
+                    ),
+                }
+            )
+            controller = ConfigureController(
+                current=current,
+                catalogs=catalogs,
+                eligibility=(eligibility[0],),
+            )
+            retired_ed = next(
+                row for row in controller.visible_rows if row.provider == "ed"
+            )
+
+            self.assertFalse(controller.course_selectable(retired_ed.candidate_key))
+            with self.assertRaisesRegex(ValueError, "disabled provider"):
+                controller.select_course(retired_ed.candidate_key)
+            controller.advance_from_selection()
+            self.assertEqual(SetupStep.FOLDERS, controller.step)
+
     def test_existing_library_root_is_read_only_at_controller_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             current, catalogs, eligibility = fixture(

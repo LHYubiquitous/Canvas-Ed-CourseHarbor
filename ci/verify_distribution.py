@@ -263,6 +263,7 @@ def _is_allowed_sdist_entry(name: str) -> bool:
         "packaging/macos/courseharbor.iconset/icon_256x256@2x.png",
         "packaging/macos/courseharbor.iconset/icon_512x512.png",
         "packaging/macos/courseharbor.iconset/icon_512x512@2x.png",
+        "packaging/macos/courseharbor.spec",
         "packaging/windows/courseharbor.ico",
         "packaging/windows/courseharbor.spec",
         "packaging/windows/courseharbor_cli.py",

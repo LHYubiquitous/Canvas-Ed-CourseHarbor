@@ -3,6 +3,31 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
+## [0.2.0rc18] - 2026-10-26
+
+### macOS application and DMG candidate
+
+- Adds a native PyInstaller `CourseHarbor.app` with GUI and console recovery
+  companions, stable bundle identity, versioned `Info.plist`, and the reviewed ICNS
+  application icon.
+- Adds a fail-closed macOS bundle audit for metadata, architectures, executable layout,
+  Qt Cocoa platform plugin, safe in-bundle symlinks, private material, and embedded
+  workspace/temp paths or external native dependencies.
+- Adds an arm64 `macos-15` CI job that creates a DMG containing an ad-hoc-signed app,
+  verifies it, mounts it read-only, reruns GUI/CLI smoke tests from the mounted volume,
+  and uploads the DMG plus its audit manifest as a 14-day workflow artifact.
+- Makes the setup journey provider-aware: Canvas-only and Ed-only profiles skip the
+  cross-provider Map step in both directions, while dual-provider profiles retain it.
+- Lets Connections form fields use the available width consistently across native Qt
+  styles, including macOS.
+- Private CI run `40283980622` passed the complete matrix and produced the audited
+  arm64 release candidate from commit `a8064ff`.
+- Owner-device validation passed Finder launch, drag-install, App Shell navigation,
+  profile/setup flows, Connections layout, and native Keychain save/test/replace.
+- Developer ID signing, Apple notarization, Gatekeeper acceptance, and
+  Intel/universal builds remain `NOT_RUN`; the published DMG is arm64, ad-hoc signed,
+  and not notarized.
+
 ## [0.2.0rc17] - 2026-10-26
 
 ### Graphical credential onboarding
@@ -66,8 +91,8 @@ Semantic Versioning; release-candidate versions are not stable API commitments.
   CLI help, and no-console GUI startup. Full visible frozen-app use, installer, signing,
   upgrade/uninstall, and macOS packaging remain `NOT_RUN`.
 - Records the owner-confirmed visible frozen Windows App Shell journey as `PASS` on
-  2026-10-26. This version is published only as a private GitHub prerelease; PyPI,
-  signing, installer, auto-update, and macOS DMG publication remain `NOT_RUN`.
+  2026-10-26. This version is published as matching private/public GitHub prereleases;
+  PyPI, signing, installer, auto-update, and macOS DMG publication remain `NOT_RUN`.
 - Adds an original CourseHarbor application icon across source UI, Windows executable
   resources, and a reviewed multi-resolution macOS iconset. The mark combines an open
   book, protective harbor, and water without using Canvas, Ed, or university branding.

@@ -1,5 +1,39 @@
 # Release and Security Audit
 
+## 0.2.0rc18 macOS DMG candidate
+
+Status: **PASS — OWNER-VERIFIED RELEASE CANDIDATE**
+Audit date: 2026-10-26
+
+This candidate adds a native PyInstaller `.app`/DMG workflow on GitHub's standard
+`macos-15` arm64 runner. The builder converts the reviewed iconset with `iconutil`,
+creates separate GUI/CLI Mach-O entry points, applies ad-hoc signing, verifies and
+mounts the DMG read-only, then reruns the bundle audit and both smoke paths from the
+mounted volume. The exact candidate also passed visible owner-device review.
+
+Developer ID signing, notarization, Gatekeeper acceptance, and Intel/universal builds
+remain `NOT_RUN`. PyPI publication remains unauthorized.
+
+| Gate | rc18 result |
+|---|---|
+| Exact private code candidate | `PASS`: commit `a8064ff20c98e3870494f03c966b72fe291afc5f` |
+| Cross-platform tests and distributions | `PASS`: all matrix and deterministic distribution jobs in private [run 40283980622](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor-private/actions/runs/40283980622) |
+| Native macOS build | `PASS`: `macos-15` arm64, Python 3.14, PyInstaller 6.22.3 |
+| Source and mounted app audit/smoke | `PASS`: GUI startup, standalone CLI startup/version, native keyring readiness, architecture/link closure, signatures, and read-only mounted-volume rerun |
+| App inventory | `PASS`: fail-closed inventory, confined symlinks, exactly one Cocoa platform plugin, arm64 entry points, ad-hoc signature verified |
+| DMG integrity | `PASS`: 118,327,239 bytes; SHA-256 `5ad80bdeafb1f1a2417d20db6b9a765516425fdafe0d52af37ed679260b056fe`; downloaded artifact matched its manifest |
+| Developer ID / notarization / Gatekeeper | `NOT_RUN / NOT_RUN / DEGRADED` |
+| Owner-device Finder, drag-install, App Shell, setup, Connections, Keychain save/test/replace | `PASS`: owner confirmed the revised candidate on 2026-10-26 |
+| Tag, GitHub Release, public-repository update | `AUTHORIZED`: pending publication |
+| PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
+
+The CLI companion is frozen independently and installed into `Contents/MacOS` before
+whole-app signing. This avoids PyInstaller multiprogram `MERGE` dependency references
+that do not survive macOS bundle relocation. Build-host scanning distinguishes hard
+repository/work paths from native compile provenance: hard paths always fail, while a
+build-environment prefix is accepted only in a verified Mach-O or an upstream
+`*.dist-info/sboms/*.json` record; private-key scanning remains unconditional.
+
 ## 0.2.0rc17 release gate
 
 Status: **PASS — PUBLIC AND PRIVATE GITHUB PRERELEASES PUBLISHED**

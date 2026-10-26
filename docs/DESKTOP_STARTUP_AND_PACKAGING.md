@@ -1,7 +1,8 @@
 # CourseHarbor desktop startup and packaging decision
 
-Status: rc17 Windows onedir candidate and owner-visible journey `PASS`; installer,
-signing, macOS, and upgrade/uninstall remain `NOT_RUN`.
+Status: rc18 Windows onedir and macOS arm64 `.app`/DMG candidates `PASS`; both visible
+owner journeys `PASS`. Developer ID signing, notarization, Intel/universal packaging,
+and upgrade/uninstall remain `NOT_RUN`; Gatekeeper remains `DEGRADED`.
 
 ## 1. Startup lifecycle
 
@@ -96,5 +97,12 @@ compiler/toolchain cost.
   resource, applied to source/frozen Qt applications, and retained as an exact macOS
   iconset for native `iconutil` conversion during DMG construction.
 - Windows installer, signing, SmartScreen, upgrade retention, and uninstall: `NOT_RUN`.
-- Frozen macOS `.app`/DMG and Keychain flow: `NOT_RUN`.
-- macOS signing/notarization and Gatekeeper: `NOT_RUN`.
+- Frozen macOS `.app`/DMG automated pipeline: `PASS` on private CI run `40283980622`
+  at commit `a8064ff`. The source app and read-only mounted DMG both passed GUI/CLI
+  smoke, arm64/native-link audit, confined-symlink audit, and whole-bundle ad-hoc
+  signature verification. The downloaded DMG is 118,327,239 bytes with SHA-256
+  `5ad80bdeafb1f1a2417d20db6b9a765516425fdafe0d52af37ed679260b056fe`.
+- macOS owner-device visible Finder launch, drag-install, and real Keychain
+  save/test/replace: `PASS` on 2026-10-26. App Shell navigation, profile/setup flows,
+  provider-aware Map skipping, and the Connections layout also passed visible review.
+- macOS Developer ID signing and notarization: `NOT_RUN`; Gatekeeper: `DEGRADED`.

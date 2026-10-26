@@ -9,11 +9,12 @@ CourseHarbor is a local desktop tool for students who use Canvas, Ed, or both. I
 downloads course material into folders you choose, creates weekly and semester due
 date reports, and provides read-only MCP access to configured courses.
 
-`0.2.0rc17` is the current GitHub prerelease. Download the reviewed artifacts from the
-[v0.2.0rc17 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc17).
+`0.2.0rc18` is the current GitHub prerelease. Download the reviewed artifacts from the
+[v0.2.0rc18 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18).
 The package is not published to PyPI. This release includes graphical token management,
-the CourseHarbor App Shell, due-date views, sync-run reports, and the audited Windows
-portable bundle described below.
+the CourseHarbor App Shell, due-date views, sync-run reports, an audited Windows
+portable bundle, and an owner-tested arm64 macOS DMG. The DMG is ad-hoc signed and not
+Apple-notarized.
 
 ## What it does
 
@@ -39,8 +40,8 @@ public source candidate, wheel, or sdist.
 
 ## 1. Install
 
-Download `canvas_ed_mcp-0.2.0rc17-py3-none-any.whl` from the
-[v0.2.0rc17 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc17)
+Download `canvas_ed_mcp-0.2.0rc18-py3-none-any.whl` from the
+[v0.2.0rc18 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18)
 and place it in a new folder. Python 3.10–3.14 is supported. Keep this folder:
 generated launchers point to the virtual environment inside it.
 
@@ -48,7 +49,7 @@ generated launchers point to the virtual environment inside it.
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc17-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
 .\.venv\Scripts\canvas-ed-mcp.exe --version
 ```
 
@@ -63,7 +64,7 @@ Activate the environment with:
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc17-py3-none-any.whl
+./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
 source ./.venv/bin/activate
 canvas-ed-mcp --version
 ```
@@ -261,9 +262,12 @@ healthy profile directly, or shows a local Profile chooser when multiple profile
 or one needs attention. Profile inspection is local-only and does not contact Canvas or
 Ed. `canvas-ed-app --profile default` remains available for explicit-profile and recovery
 workflows. The installed `courseharbor` GUI entry point avoids a normal Windows console;
-the public `v0.2.0rc17` GitHub prerelease includes a self-contained Windows onedir
-candidate that passed automated startup/relocation checks and an owner-confirmed visible
-journey. A signed installer and upgrade/uninstall flow remain `NOT_RUN`.
+the public `v0.2.0rc18` GitHub prerelease includes a self-contained Windows onedir
+bundle that passed automated startup/relocation checks and an owner-confirmed visible
+journey. It also includes an audited arm64 macOS DMG that passed owner-device Finder,
+drag-install, App Shell, setup, Connections, and real Keychain save/test/replace checks.
+The DMG is ad-hoc signed and not notarized; Gatekeeper remains `DEGRADED`.
+A signed installer and upgrade/uninstall flow remain `NOT_RUN`.
 
 The single window provides Library, Due dates, Courses, Connections, Health & About,
 and Open local library. Library keeps the asynchronous reviewed preview/apply boundary.

@@ -8,11 +8,18 @@ import sys
 
 
 def _bundle_smoke() -> int:
-    import httpx
+    try:
+        import httpx
 
-    from canvas_ed_mcp.secrets import keyring_status
-
-    status = keyring_status()
+        from canvas_ed_mcp.secrets import keyring_status
+    except ImportError:
+        print(json.dumps({"backend": "unavailable", "keyring": "missing_dependency"}))
+        return 4
+    try:
+        status = keyring_status()
+    except Exception:
+        print(json.dumps({"backend": "unavailable", "keyring": "backend_error"}))
+        return 3
     print(
         json.dumps(
             {

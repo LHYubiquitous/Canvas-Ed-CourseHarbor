@@ -11,9 +11,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 try:
-    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtWidgets import QApplication, QFormLayout, QMessageBox
 except ImportError:  # pragma: no cover - optional desktop dependency
     QApplication = None  # type: ignore[assignment]
+    QFormLayout = None  # type: ignore[assignment]
     QMessageBox = None  # type: ignore[assignment]
 
 from canvas_ed_mcp.application.contracts import (
@@ -208,6 +209,18 @@ class CourseHarborShellTests(unittest.TestCase):
             self.assertIn("verified", message)
             self.assertIn("write failed", message)
             self.assertEqual("", page._cards["canvas"]["token"].text())
+        finally:
+            window._allow_close = True
+            window.close()
+
+    def test_connections_fields_grow_with_the_available_width(self) -> None:
+        window = self._window()
+        try:
+            page = window.pages["connections"]
+            expected = QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+            for provider in ("canvas", "ed"):
+                card = page._cards[provider]
+                self.assertEqual(expected, card["frame"].layout().fieldGrowthPolicy())
         finally:
             window._allow_close = True
             window.close()
