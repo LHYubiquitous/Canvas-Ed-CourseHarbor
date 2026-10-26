@@ -6,12 +6,13 @@ CourseHarbor 是面向学生的本地桌面工具，可从 Canvas、Ed 或两者
 生成本周截止日期 TXT 与全学期 Markdown 清单，并为已确认的课程提供只读 MCP 工具。
 它只向本地输出目录写文件，不会在 Canvas 或 Ed 上提交、编辑或删除内容。
 
-`0.2.0rc18` 是当前 GitHub prerelease。请从
-[v0.2.0rc18 Release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18)
+`0.2.0rc19` 是当前 GitHub prerelease。请从
+[v0.2.0rc19 Release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc19)
 下载对应桌面 App；本项目尚未发布到 PyPI。
 本版本包含图形化 token 管理、CourseHarbor App Shell、due-date 页面、sync-run reports，
-以及下文所述经过审核的 Windows portable bundle 和经 owner-device 测试的 arm64 macOS
-DMG。该 DMG 使用 ad-hoc signing，尚未经过 Apple notarization。
+以及下文所述经过审核的 Windows portable bundle 和 arm64 macOS DMG；同时修复了 Windows
+UI Automation cache 索引过期导致展开旧 sync run 时 Courses 页面卡死的问题。该 DMG 使用
+ad-hoc signing，尚未经过 Apple notarization。
 
 ## 1. 下载并打开桌面 App
 
@@ -19,7 +20,7 @@ DMG。该 DMG 使用 ad-hoc signing，尚未经过 Apple notarization。
 
 ### Windows 10/11 x86_64
 
-1. 下载 `CourseHarbor-v0.2.0rc18-windows-x86_64-portable.zip`。
+1. 下载 `CourseHarbor-v0.2.0rc19-windows-x86_64-portable.zip`。
 2. 把整个 ZIP 解压到准备长期保留的目录；不要在压缩包内部直接运行，也不要只复制一个
    `.exe` 出来。
 3. 打开 `CourseHarbor.exe`。
@@ -29,7 +30,7 @@ Windows 包是 unsigned portable app，不是 installer。系统可能显示“�
 
 ### Apple silicon macOS
 
-1. 下载 `CourseHarbor-v0.2.0rc18-macos-arm64.dmg`。
+1. 下载 `CourseHarbor-v0.2.0rc19-macos-arm64.dmg`。
 2. 打开 DMG，把 **CourseHarbor** 拖进 **Applications**。
 3. 从 Applications 启动 CourseHarbor。
 
@@ -235,11 +236,11 @@ App 与 macOS DMG 用户不需要执行这些步骤。
 ### 安装经过审核的 wheel
 
 支持 Python 3.10–3.14。从 Release 下载
-`canvas_ed_mcp-0.2.0rc18-py3-none-any.whl`，在独立环境中安装 GUI extra：
+`canvas_ed_mcp-0.2.0rc19-py3-none-any.whl`，在独立环境中安装 GUI extra：
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc19-py3-none-any.whl
 .\.venv\Scripts\python.exe -m pip install "PySide6>=6.8,<7"
 .\.venv\Scripts\courseharbor.exe
 ```

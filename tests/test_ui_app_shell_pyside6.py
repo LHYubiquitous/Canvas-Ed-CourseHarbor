@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 try:
+    from PySide6.QtGui import QAccessible
     from PySide6.QtWidgets import QApplication, QFormLayout, QMessageBox
 except ImportError:  # pragma: no cover - optional desktop dependency
     QApplication = None  # type: ignore[assignment]
@@ -298,6 +299,86 @@ class CourseHarborShellTests(unittest.TestCase):
         finally:
             window._allow_close = True
             window.close()
+
+    def test_baseline_only_history_retains_expandable_run_summary(self) -> None:
+        from canvas_ed_mcp.paths import ProfilePaths
+
+        paths = ProfilePaths(
+            profile="test", config_file=self.config_path,
+            state_file=self.root / "state" / "state-v4.json",
+            state_backup_file=self.root / "state" / "state-v4.backup.json",
+            lock_dir=self.root / "locks", log_dir=self.root / "logs",
+            cache_dir=self.root / "cache",
+        )
+        store = SyncReportStore("test", paths_resolver=lambda profile: paths)
+        baseline = SyncApplyResult(
+            OperationStatus.SUCCEEDED,
+            sources=(SyncSourceSummary(
+                course_key="course-42", provider="canvas",
+                instance="canvas.example.edu", course_id="42",
+                actions=("record_only",), course_folder="COMP0000",
+                course_code="COMP0000", course_name="Example course",
+            ),),
+        )
+        store.record(baseline, output_root=self.output)
+        store.record(baseline, output_root=self.output)
+        window = self._window(report_store=store)
+        try:
+            tree = window.pages["courses"].report_tree
+            course = tree.topLevelItem(0)
+            self.assertEqual(2, course.childCount())
+            for index in range(course.childCount()):
+                run = course.child(index)
+                self.assertEqual(1, run.childCount())
+                self.assertTrue(tree.model().hasChildren(tree.indexFromItem(run)))
+                self.assertIn("baseline recorded", run.text(2))
+                self.assertEqual("No new or updated files", run.child(0).text(0))
+                self.assertIn("baseline recorded", run.child(0).text(2))
+                self.assertEqual(
+                    self.output.resolve() / "COMP0000", Path(run.child(0).text(3))
+                )
+        finally:
+            window._allow_close = True
+            window.close()
+
+    def test_collapsing_history_keeps_accessible_sibling_indexes_consistent(self) -> None:
+        from PySide6.QtWidgets import QTreeWidgetItem
+
+        was_active = QAccessible.isActive()
+        QAccessible.setActive(True)
+        window = self._window()
+        try:
+            tree = window.pages["courses"].report_tree
+            course = tree.topLevelItem(0)
+            for number in range(3):
+                run = QTreeWidgetItem(course, (f"Run {number}", "Partial", "Baseline", ""))
+                QTreeWidgetItem(run, ("No new or updated files", "", "", ""))
+            QTreeWidgetItem(tree, ("Later course", "Canvas", "Baseline", ""))
+            window.show_route("courses")
+            window.show()
+            self.application.processEvents()
+
+            def assert_accessible_order() -> None:
+                interface = QAccessible.queryAccessibleInterface(tree)
+                for index in range(interface.childCount()):
+                    child = interface.child(index)
+                    self.assertIsNotNone(child)
+                    self.assertEqual(index, interface.indexOfChild(child))
+
+            course.setExpanded(True)
+            assert_accessible_order()
+            for run_index in (0, 2, 1, 0, 2):
+                run = course.child(run_index)
+                run.setExpanded(True)
+                assert_accessible_order()
+                run.setExpanded(False)
+                assert_accessible_order()
+            course.setExpanded(False)
+            assert_accessible_order()
+        finally:
+            window._allow_close = True
+            window.close()
+            QAccessible.setActive(was_active)
 
     def test_legacy_keyring_reference_is_read_only_and_fails_closed(self) -> None:
         config = load_config(self.config_path)

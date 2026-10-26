@@ -1,12 +1,14 @@
 # 测试、部署与运行
 
-> 当前 GitHub prerelease 为 `v0.2.0rc18`。该版本包含 CourseHarbor App Shell、图形化
+> 当前发布候选为 `v0.2.0rc19`。该版本包含 CourseHarbor App Shell、图形化
 > credential workflow、独立 due-date 页面、sync-run reports、经过审核的 Windows
-> portable bundle 与 arm64 macOS DMG。旧版本保持不可变，实时发布状态以 public repository 的
-> GitHub Release 页面为准；PyPI 未授权、未执行。
+> portable bundle 与 arm64 macOS DMG，并修复 Courses 历史记录展开/收起时的 Windows
+> accessibility cache 卡死。旧版本保持不可变，实时发布状态以 public repository 的 GitHub
+> Release 页面为准；PyPI 未授权、未执行。
 
-> arm64 DMG 已通过 private CI audit 和 owner-device Finder、drag-install、App Shell、
-> setup、Connections 与真实 Keychain save/test/replace 验证。它使用 ad-hoc signing，
+> rc18 arm64 DMG 已通过 private CI audit 和 owner-device Finder、drag-install、App Shell、
+> setup、Connections 与真实 Keychain save/test/replace 验证；rc19 macOS owner-device
+> 重测为 `NOT_RUN`。DMG 使用 ad-hoc signing，
 > 尚未 notarize；Developer ID、Intel/universal build 与 PyPI publication 均为 `NOT_RUN`，
 > Gatekeeper 为 `DEGRADED`。
 

@@ -1,8 +1,10 @@
 # CourseHarbor desktop startup and packaging decision
 
 Status: rc18 Windows onedir and macOS arm64 `.app`/DMG candidates `PASS`; both visible
-owner journeys `PASS`. Developer ID signing, notarization, Intel/universal packaging,
-and upgrade/uninstall remain `NOT_RUN`; Gatekeeper remains `DEGRADED`.
+owner journeys `PASS`. rc19 retains those packaging paths and adds an owner-verified
+Windows Courses-tree accessibility repair; its full automated packaging rerun is the
+release gate. Developer ID signing, notarization, Intel/universal packaging, and
+upgrade/uninstall remain `NOT_RUN`; Gatekeeper remains `DEGRADED`.
 
 ## 1. Startup lifecycle
 

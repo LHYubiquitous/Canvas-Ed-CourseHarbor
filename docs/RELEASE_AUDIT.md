@@ -1,5 +1,29 @@
 # Release and Security Audit
 
+## 0.2.0rc19 Courses history responsiveness candidate
+
+Status: **IN PROGRESS — PUBLICATION AUTHORIZED**
+Audit date: 2026-10-26
+
+This candidate fixes a Qt 6.12 accessibility-cache inconsistency in the Courses tree.
+Expanding a branch refreshes Qt's visible-cell cache, but collapsing it can leave stale
+sibling indexes. Windows UI Automation may then repeatedly navigate the obsolete cells,
+keeping the GUI thread busy and making the application appear frozen. CourseHarbor now
+emits a table-model reset accessibility event after collapse and retains an expandable
+summary row for baseline-only sync runs.
+
+| Gate | rc19 result |
+|---|---|
+| Focused regression tests | `PASS`: baseline-only history remains expandable; repeated collapse preserves accessible child/index consistency |
+| Exact affected owner-device journey | `PASS`: owner expanded and collapsed the historical `2026-10-26 02:19:59` run without a freeze |
+| Complete synthetic suite | `PASS`: 642 tests, 6 documented Windows/macOS platform skips |
+| Deterministic source/wheel/sdist | `IN PROGRESS` |
+| Windows portable build/audit/smoke | `IN PROGRESS` |
+| macOS arm64 DMG build/audit/smoke | `IN PROGRESS`; rc19 owner-device macOS rerun `NOT_RUN` |
+| Remote private/public CI | `IN PROGRESS` |
+| GitHub tag/prerelease | `IN PROGRESS`; rc18 remains immutable |
+| PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
+
 ## 0.2.0rc18 macOS DMG candidate
 
 Status: **PASS — PUBLIC AND PRIVATE GITHUB PRERELEASES PUBLISHED**

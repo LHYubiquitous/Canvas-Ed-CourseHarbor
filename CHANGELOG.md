@@ -3,6 +3,15 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
+## [0.2.0rc19] - 2026-10-26
+
+### Courses history responsiveness
+
+- Refreshes the Courses tree's accessibility cell cache after collapsing a branch,
+  preventing stale sibling indexes during Windows UI Automation navigation.
+- Keeps baseline-only sync runs expandable and shows their result summary and local
+  destination even when no files were added or updated.
+
 ## [0.2.0rc18] - 2026-10-26
 
 ### macOS application and DMG candidate

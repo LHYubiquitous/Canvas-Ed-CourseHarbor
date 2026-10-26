@@ -9,12 +9,13 @@ CourseHarbor is a local desktop tool for students who use Canvas, Ed, or both. I
 downloads course material into folders you choose, creates weekly and semester due
 date reports, and provides read-only MCP access to configured courses.
 
-`0.2.0rc18` is the current GitHub prerelease. Download the reviewed artifacts from the
-[v0.2.0rc18 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18).
+`0.2.0rc19` is the current GitHub prerelease. Download the reviewed artifacts from the
+[v0.2.0rc19 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc19).
 The package is not published to PyPI. This release includes graphical token management,
 the CourseHarbor App Shell, due-date views, sync-run reports, an audited Windows
-portable bundle, and an owner-tested arm64 macOS DMG. The DMG is ad-hoc signed and not
-Apple-notarized.
+portable bundle, and an audited arm64 macOS DMG. It also fixes a Windows UI Automation
+cache defect that could freeze Courses when an older sync run was expanded. The DMG is
+ad-hoc signed and not Apple-notarized.
 
 ## What it does
 
@@ -41,12 +42,12 @@ public source candidate, wheel, or sdist.
 ## 1. Download and open the desktop app
 
 Most users should download a desktop package from the
-[v0.2.0rc18 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18).
+[v0.2.0rc19 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc19).
 No separate Python installation is required for these packages.
 
 ### Windows 10/11 x86_64
 
-1. Download `CourseHarbor-v0.2.0rc18-windows-x86_64-portable.zip`.
+1. Download `CourseHarbor-v0.2.0rc19-windows-x86_64-portable.zip`.
 2. Extract the complete ZIP to a folder you intend to keep. Do not run the executable
    from inside the ZIP or move only one file out of the extracted folder.
 3. Open `CourseHarbor.exe`.
@@ -56,7 +57,7 @@ unrecognized-app warning. Compare the download with `SHA256SUMS` before running 
 
 ### macOS on Apple silicon
 
-1. Download `CourseHarbor-v0.2.0rc18-macos-arm64.dmg`.
+1. Download `CourseHarbor-v0.2.0rc19-macos-arm64.dmg`.
 2. Open the DMG and drag **CourseHarbor** into **Applications**.
 3. Launch CourseHarbor from Applications.
 
@@ -313,12 +314,12 @@ package. It is not required for the Windows portable app or macOS DMG.
 ### Install the reviewed wheel
 
 Python 3.10–3.14 is supported. Download
-`canvas_ed_mcp-0.2.0rc18-py3-none-any.whl` from the release, then create an isolated
+`canvas_ed_mcp-0.2.0rc19-py3-none-any.whl` from the release, then create an isolated
 environment and install the GUI extra:
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc19-py3-none-any.whl
 .\.venv\Scripts\python.exe -m pip install "PySide6>=6.8,<7"
 .\.venv\Scripts\courseharbor.exe
 ```

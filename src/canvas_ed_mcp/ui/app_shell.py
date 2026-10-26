@@ -8,7 +8,12 @@ from pathlib import Path
 from typing import Sequence
 
 from PySide6.QtCore import QProcess, Qt, QUrl, Signal
-from PySide6.QtGui import QCloseEvent, QDesktopServices
+from PySide6.QtGui import (
+    QAccessible,
+    QAccessibleTableModelChangeEvent,
+    QCloseEvent,
+    QDesktopServices,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -131,6 +136,7 @@ class _CoursesPage(QWidget):
         self.report_tree.setAlternatingRowColors(True)
         self.report_tree.setRootIsDecorated(True)
         self.report_tree.setUniformRowHeights(True)
+        self.report_tree.collapsed.connect(self._refresh_tree_accessibility)
         self.report_tree.header().setStretchLastSection(True)
         self.report_tree.header().resizeSection(0, 330)
         self.report_tree.header().resizeSection(1, 150)
@@ -180,19 +186,28 @@ class _CoursesPage(QWidget):
             self.report_tree.addTopLevelItem(top)
             for report, course_report in course_runs:
                 timestamp = report.recorded_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+                changes = _action_summary(course_report.action_counts)
                 run_item = QTreeWidgetItem(
                     (
                         timestamp,
                         report.status.value.replace("_", " ").title(),
-                        _action_summary(course_report.action_counts),
+                        changes,
                         str(course_report.destination),
                     )
                 )
                 run_item.setToolTip(3, str(course_report.destination))
+                run_item.setToolTip(2, changes)
                 top.addChild(run_item)
                 if not course_report.changed_items:
                     run_item.addChild(
-                        QTreeWidgetItem(("No new or updated files", "", "", ""))
+                        QTreeWidgetItem(
+                            (
+                                "No new or updated files",
+                                " + ".join(source.title() for source in course_report.sources),
+                                changes,
+                                str(course_report.destination),
+                            )
+                        )
                     )
                 for item in course_report.changed_items:
                     destination = str(item.destination or course_report.destination)
@@ -210,6 +225,16 @@ class _CoursesPage(QWidget):
             top.setExpanded(False)
         if self.report_tree.topLevelItemCount():
             self.report_tree.setCurrentItem(self.report_tree.topLevelItem(0))
+
+    def _refresh_tree_accessibility(self) -> None:
+        # Qt 6.12 invalidates visible-cell indexes on expand but not collapse.
+        # Stale sibling indexes can loop in Windows UI Automation navigation.
+        if QAccessible.isActive():
+            event = QAccessibleTableModelChangeEvent(
+                self.report_tree,
+                QAccessibleTableModelChangeEvent.ModelChangeType.ModelReset,
+            )
+            QAccessible.updateAccessibility(event)
 
     def record_sync_result(self, result: object) -> None:
         if not isinstance(result, SyncApplyResult):
