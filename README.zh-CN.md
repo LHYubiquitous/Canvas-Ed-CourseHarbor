@@ -8,40 +8,37 @@ CourseHarbor 是面向学生的本地桌面工具，可从 Canvas、Ed 或两者
 
 `0.2.0rc18` 是当前 GitHub prerelease。请从
 [v0.2.0rc18 Release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18)
-下载经过审核的 `canvas_ed_mcp-0.2.0rc18-py3-none-any.whl`；本项目尚未发布到 PyPI。
+下载对应桌面 App；本项目尚未发布到 PyPI。
 本版本包含图形化 token 管理、CourseHarbor App Shell、due-date 页面、sync-run reports，
 以及下文所述经过审核的 Windows portable bundle 和经 owner-device 测试的 arm64 macOS
 DMG。该 DMG 使用 ad-hoc signing，尚未经过 Apple notarization。
 
-## 1. 安装
+## 1. 下载并打开桌面 App
 
-需要 Python 3.10–3.14。把 wheel 放进一个准备长期保留的独立目录；生成的启动脚本会
-指向该目录中的虚拟环境。
+普通用户直接下载桌面包即可，不需要另外安装 Python。
 
-### Windows PowerShell
+### Windows 10/11 x86_64
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
-.\.venv\Scripts\canvas-ed-mcp.exe --version
-.\.venv\Scripts\Activate.ps1
-```
+1. 下载 `CourseHarbor-v0.2.0rc18-windows-x86_64-portable.zip`。
+2. 把整个 ZIP 解压到准备长期保留的目录；不要在压缩包内部直接运行，也不要只复制一个
+   `.exe` 出来。
+3. 打开 `CourseHarbor.exe`。
 
-如果没有 `py`，用已安装 Python 的完整路径代替。不要以管理员身份全局安装。
+Windows 包是 unsigned portable app，不是 installer。系统可能显示“无法识别的应用”提示；
+运行前请用 Release 中的 `SHA256SUMS` 核对下载文件。
 
-### macOS 或 Linux
+### Apple silicon macOS
 
-```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
-source ./.venv/bin/activate
-canvas-ed-mcp --version
-```
+1. 下载 `CourseHarbor-v0.2.0rc18-macos-arm64.dmg`。
+2. 打开 DMG，把 **CourseHarbor** 拖进 **Applications**。
+3. 从 Applications 启动 CourseHarbor。
 
-先运行 `canvas-ed-mcp doctor --show-paths`。Windows 通常应显示
-`keyring.backends.Windows.WinVaultKeyring`，macOS 通常应显示
-`keyring.backends.macOS.Keyring`，并且 `available` 为 `true`。Linux 需要可用且已解锁的
-Secret Service 或 KWallet；不要用 plaintext/Null keyring 规避检查。
+当前 DMG 仅支持 Apple silicon (`arm64`)，使用 ad-hoc signing，尚未经过 Apple
+notarization，因此 Gatekeeper 状态为 `DEGRADED`；运行前请核对 `SHA256SUMS`。Intel / universal
+build 仍为 `NOT_RUN`。
+
+Python wheel、CLI/MCP 和源码构建集中放在后面的
+[Python package 与源码构建](#6-python-package-与源码构建)，不与桌面 App 使用步骤混排。
 
 ## 2. 获取并保存 API token
 
@@ -72,8 +69,9 @@ Ed 接口目前属于 unofficial、schema-sensitive 集成。不要用 Canvas to
 
 ### 2.3 在桌面向导中保存并验证
 
-启动 `canvas-ed-setup`。若启用 Canvas，先填写学校自己的 API base URL；把 token 粘贴到
-masked **API token** 输入框，然后选择 **Save and test**。应用会先检查安全的 native
+打开 CourseHarbor，在 First run 中选择实际使用的 provider。若启用 Canvas，填写学校自己的
+API base URL；把 token 粘贴到 masked **API token** 输入框，然后选择 **Save and test**。
+应用会先检查安全的 native
 credential store，再对单个 provider 执行只读课程列表请求；只有验证成功后才写入该
 profile/provider 的确定性 keyring reference。任务开始时输入框会立即清空，token 不会进入
 clipboard、config、state、命令参数或 UI 状态文本。
@@ -108,22 +106,15 @@ keyring:canvas-ed-mcp/default/ed
 `keyring:canvas-ed-mcp/semester-2/ed`。token 不得放进 TOML、启动脚本、MCP 配置、截图、
 聊天消息或 Git 仓库。
 
-## 3. 首次配置
+## 3. 完成首次配置
 
-在源码目录运行 `python -m pip install ".[gui]"`，或安装 wheel 时选择 `gui` 可选依赖。
-随后使用正式的首次配置入口：
-
-```text
-canvas-ed-setup
-```
-
-在源码目录也可以使用 `python -m canvas_ed_mcp.ui.first_run_window` 启动。
-
-它会使用真实 profile 路径和只读 Canvas/Ed 课程发现，再把真实课程列表交给已经验收的
-`Select → Map → Folders → Review` 流程。Token 输入框为 masked 且 transient；配置只接收
+所有启用的 connection 通过只读测试后，CourseHarbor 会发现课程并进入 setup。只使用
+Canvas 或只使用 Ed 时，流程是 **Select → Folders → Review**；只有同时启用两者时才显示
+**Map**，由用户明确决定 Canvas↔Ed 课程关系。程序不会因为名字相似而自动配对。
+Token 输入框为 masked 且 transient；配置只接收
 `keyring:canvas-ed-mcp/default/canvas` 这类确定性引用。最终确认会创建新配置，并为尚不存在的
 课程创建空的 course folder；它不会下载课程内容、不创建 Library root、不写 sync state，
-也不安装 launcher。该可安装入口尚不是签名或冻结后的桌面发行包。
+也不安装 launcher。
 
 Library root 的选择被明确推迟到 Folders 步骤。该 root 同时包含课程文件夹、
 `Canvas Ed MCP Launchers` 与 due reports，因此不应只称为 launcher directory。Library root
@@ -134,92 +125,63 @@ Library root 的选择被明确推迟到 Folders 步骤。该 root 同时包含�
 尚不存在的课程目录会立即创建。已有配置中的 root 与课程文件夹
 仍保持只读，因为 configuration workflow 不会移动文件。
 
-先预览，不写配置、状态或课程文件：
-
-```text
-canvas-ed-mcp setup --profile default --dry-run
-```
-
-向导会让你选择 Canvas、Ed 或 both，输入 API base/credential reference，逐门确认课程，
-并选择首次同步策略：
+课程表会逐门确认要保留的课程，并让每门课选择首次同步策略：
 
 - `baseline_from_now`：记录当前远端状态，以后只下载新增或变更内容；
 - `import_all`：第一次正式同步时下载当前已有资料。
 
-如果 Canvas 和 Ed 都启用，课程关联必须由你明确确认；程序不会因名字相似而自动合并。
-预览完全正确后再正式写入：
+Review 页面会显示准确的 local layout，只有按下 **Save configuration** 才写入配置。
 
-```text
-canvas-ed-mcp setup --profile default
-```
-
-确认提示后会保存 profile，并在输出目录生成日常启动脚本。用下面两项检查结果：
-
-```text
-canvas-ed-mcp doctor --profile default --show-paths
-canvas-ed-mcp config validate "<CONFIG_FILE>"
-```
-
-以后增删课程、重新配对或修改每门课的下载内容时，直接打开图形化编辑器：
-
-```text
-canvas-ed-configure --profile default
-```
-
-也可以双击 `configure_courses`，或在日常菜单选择第 4 项。编辑器会自动载入并勾选
+以后增删课程、重新配对或修改每门课的下载内容时，从 **Courses** 打开课程配置。编辑器会
+自动载入并勾选
 当前课程，保存前显示准确的配置差异。这个版本不会迁移文件夹：已有 folder name
 只读；只有“没有同步历史，且原课程文件夹不存在或为空”的 source 可以重新配对，
-否则界面会显示锁定原因。保存只修改配置，不移动或删除文件，也不会自动开始同步。
+否则界面会显示锁定原因。保存只修改配置，不移动或删除文件，也不会自动开始同步。从配置中
+移除 source 不会删除已经下载的文件或历史 state。
 
-如果图形依赖不可用，仍可使用终端流程：
+## 4. 使用 CourseHarbor App Shell
 
-```text
-canvas-ed-mcp configure --profile default --dry-run
-canvas-ed-mcp configure --profile default
-```
+没有 profile 时会进入 First run；只有一个健康 profile 时直接打开；存在多个 profile 或某个
+profile 需要修复时显示 **Profile chooser**。这里仅检查本地 config/state metadata，不连接
+Canvas 或 Ed。
 
-从配置中移除 source 不会删除已经下载的文件或历史 state。
+### Library
 
-## 4. 日常使用
+选择 **Preview course material** 执行只读发现，查看每门课、每个 provider 的准确 action，
+必要时展开 warning summary，再选择 **Apply reviewed changes**。Preview 不写课程文件；Apply
+只执行刚刚审阅的 plan。耗时工作不阻塞 Qt event loop，并显示进度与取消状态。
 
-保存配置后可以选择把 Windows `.cmd`、macOS `.command` 或 Linux `.sh` 启动脚本安装到
-输出目录下的 `Canvas Ed MCP Launchers`。无需先安装 shortcuts，也可从 Setup 直接打开
-PySide6 CourseHarbor App Shell；安装后双击 `canvas_ed_app` 也会打开同一窗口。
+### Due dates
 
-安装 `gui` 可选依赖后，可以启动桌面 App：
+**This week** 与 **Semester** 是两个独立视图，各自拥有 **Load**、export folder 和明确的
+**Export**。Load 不会写文件，两类报告也可以使用不同目录。导出采用 create-only 策略；内容
+变化时生成 numbered revision，不覆盖旧报告。
 
-```text
-courseharbor
-```
+### Courses
 
-不带参数启动时：没有 profile 会进入 First run；只有一个健康 profile 会直接打开；存在多个
-profile 或某个 profile 需要修复时，会显示本地 Profile chooser。这个检查只读取本地
-config/state metadata，不连接 Canvas 或 Ed。`canvas-ed-app --profile default` 继续用于
-指定 profile 和恢复场景。安装生成的 `courseharbor` GUI entry point 在正常 Windows 启动时
-不打开控制台；public `v0.2.0rc18` GitHub prerelease 包含 self-contained Windows onedir
-bundle，已通过自动 startup/relocation checks 与 owner-confirmed visible journey。
-同时提供的 arm64 macOS DMG 已通过 owner-device Finder、drag-install、App Shell、setup、
-Connections 与真实 Keychain save/test/replace 检查。该 DMG 仅为 ad-hoc signed、尚未
-notarize，Gatekeeper 仍为 `DEGRADED`。signed installer
-与 upgrade/uninstall 仍为 `NOT_RUN`。
+按 Course → sync run → changed files 展开，可以看到每次新增或更新的文件和准确 local
+destination，也可以从这里进入课程配置。本地报告历史不含 token 或 provider 原始异常文本。
 
-同一个窗口可以进入 Library、Due dates、Courses、Connections、Health & About，并可直接
-Open local library。Library 保留异步 reviewed preview/apply 边界；course-material discovery
-使用有界的 read-only concurrency 与 Canvas bulk indexes，apply 仍保持有序串行。Due dates
-拆分为 **This week** 与 **Semester** 两个独立 tab，各自拥有 Load、export folder 与明确的
-Export 操作，选择目录本身不会写文件。Courses 可以按 Course → sync run → changed files
-逐层展开，显示每次新增或更新的文件及准确 local destination；本地报告历史不含 credential
-或 provider 原始错误文本。Connections 使用短暂的 masked input 与系统
-credential store。工作中关闭窗口会先请求协作式取消，等到安全边界后再释放 provider
-session。经过实测的英文编号终端菜单仍可通过 `canvas-ed-mcp app` 用于 CLI workflow。
-左侧的 **Switch profile** 会先等待当前任务到达安全取消边界，再返回 Profile chooser。
-新建配置时，**Open daily dashboard** 会在同一个进程中用 App Shell 替换已经完成的 Setup；
-独立 setup 命令仍保留 detached fallback，继续作为可单独使用的恢复入口。
+### Connections
 
-在内嵌的新 profile 流程中关闭 Course selection，会返回刷新后的 Profile chooser。
-**Remove profile…** 只有在针对性确认后才会让选中的 profile 从 chooser 消失：程序会先
-复核 config revision，再把配置移入 profile 配置目录旁的私有 `.removed` archive。
-下载的课程文件、系统 credential、sync state、logs/cache 都不会删除，也不会撤销远程 Token。
+**Test existing** 通过 provider-isolated 的只读请求诊断当前 credential。轮换 token 时，把新值
+粘贴到 masked **Replacement token**，再选择 **Save and test**；留空表示保留旧值。`env:`
+reference 属于 externally managed credential，UI 不允许覆盖。
+
+### Health & About、local files 与 profile
+
+**Health & About** 显示不含 secret 的版本、profile、路径与 keyring readiness。**Open local
+library** 打开 library root；setup 保存时已经确保每门课的 course folder 存在。后台任务运行时
+关闭窗口，会先请求协作式取消并在安全边界释放 provider session。
+
+**Switch profile** 返回 Profile chooser。**Remove profile…** 经过针对性确认后只把选中的
+profile config 移入私有 `.removed` archive；不会删除课程文件、系统 credential、sync state、
+logs/cache，也不会撤销远程 token。
+
+### 可选 daily-use shortcuts
+
+Setup 可以在 `<library root>/Canvas Ed MCP Launchers` 创建原生 shortcuts。用户手动修改过的
+shortcut 永不覆盖；更新后的 managed candidate 使用 `.new` 后缀等待审核。
 
 | 启动脚本 | 用途 |
 |---|---|
@@ -235,13 +197,14 @@ session。经过实测的英文编号终端菜单仍可通过 `canvas-ed-mcp app
 `course_material_sync` 是一键正式同步。due report 不覆盖旧文件：内容变化时会生成
 `--r002`、`--r003` 等新版本；全学期清单会保留带稳定标记的已勾选项和手写备注。
 
-## 5. CLI 与 MCP
+## 5. 高级 CLI 与 MCP
 
 常用 CLI：
 
 ```text
 canvas-ed-mcp sync --profile default --dry-run
 canvas-ed-mcp sync --profile default
+canvas-ed-mcp setup --profile default --dry-run
 canvas-ed-mcp due week --profile default
 canvas-ed-mcp due semester --profile default
 canvas-ed-mcp configure-gui --profile default
@@ -264,7 +227,50 @@ canvas-ed-mcp serve --profile default
 keyring reference 读取凭据。实际暴露的工具随已启用 provider 变化，至少包含
 `server_status`，并可包含 Canvas/Ed 的已配置课程与 Ed 内容读取工具。
 
-## 6. 更新、回滚与卸载
+## 6. Python package 与源码构建
+
+本节面向 developer、CLI/MCP 用户，以及没有 frozen desktop package 的平台；Windows portable
+App 与 macOS DMG 用户不需要执行这些步骤。
+
+### 安装经过审核的 wheel
+
+支持 Python 3.10–3.14。从 Release 下载
+`canvas_ed_mcp-0.2.0rc18-py3-none-any.whl`，在独立环境中安装 GUI extra：
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install "PySide6>=6.8,<7"
+.\.venv\Scripts\courseharbor.exe
+```
+
+macOS / Linux 使用 `python3 -m venv .venv`，再通过 `./.venv/bin/python` 运行等价的 wheel
+和 `PySide6>=6.8,<7` 安装命令。
+本项目没有发布到 PyPI。
+
+### 从源码构建并运行
+
+```text
+git clone https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor.git
+cd Canvas-Ed-CourseHarbor
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[gui]"
+.\.venv\Scripts\courseharbor.exe
+```
+
+macOS / Linux 把 `py` 换成 `python3`，再使用 `./.venv/bin/python` 与
+`./.venv/bin/courseharbor`。Contributor 使用锁定环境时，安装 `uv 0.11.28` 后运行：
+
+```text
+uv sync --locked --all-extras --group dev
+uv run --locked python -B ci/run_release_tests.py --root .
+```
+
+public release source 来自 audited clean-source archive，不包含 private development history。
+详细 packaging 与验证边界见 [测试与运维](docs/TESTING_AND_OPERATIONS.md) 和
+[Release audit](docs/RELEASE_AUDIT.md)。
+
+## 7. 更新、回滚与卸载
 
 更新前保留旧 wheel，并备份 `doctor --show-paths` 显示的非敏感 config/state。安装新
 wheel 后重新生成启动脚本：
@@ -280,7 +286,7 @@ canvas-ed-mcp launchers install --profile default
 `python -m pip uninstall canvas-ed-mcp` 不会删除课程输出、profile/state 或系统钥匙串
 条目；远端 token 的撤销与本地 keyring 删除需要分别处理。
 
-## 7. 常见问题
+## 8. 常见问题
 
 - **`authentication_failed` / HTTP 401**：token 已失效或被撤销。重新在平台生成，写入
   同一个 keyring entry，再执行 dry-run；不要建立明文备用凭据。
@@ -302,7 +308,7 @@ canvas-ed-mcp launchers install --profile default
 [认证安全](docs/AUTHENTICATION.md)；测试与发布证据见
 [测试与运维](docs/TESTING_AND_OPERATIONS.md)。
 
-## 8. 隐私、边界与许可
+## 9. 隐私、边界与许可
 
 - token 只存系统 keyring；配置只保存 reference。
 - 下载课程内容不代表取得再分发权，请把输出保留在你有权控制的位置。

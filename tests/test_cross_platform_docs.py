@@ -14,11 +14,12 @@ class CrossPlatformDocumentationTests(unittest.TestCase):
     def test_readme_is_ordered_for_install_setup_and_daily_use(self) -> None:
         text = README.read_text(encoding="utf-8")
         headings = (
-            "## 1. Install",
-            "## 2. Store credentials",
-            "## 3. Create your profile",
-            "## 4. Daily use",
-            "## 5. Command-line and MCP use",
+            "## 1. Download and open the desktop app",
+            "## 2. Configure Canvas and Ed API access",
+            "## 3. Finish first-run setup",
+            "## 4. Use the CourseHarbor App Shell",
+            "## 5. Advanced CLI and MCP",
+            "## 6. Python package and source builds",
         )
         positions = [text.index(heading) for heading in headings]
         self.assertEqual(sorted(positions), positions)
@@ -44,7 +45,7 @@ class CrossPlatformDocumentationTests(unittest.TestCase):
         text = CHINESE_README.read_text(encoding="utf-8")
 
         for required in (
-            "## 1. 安装",
+            "## 1. 下载并打开桌面 App",
             "## 2. 获取并保存 API token",
             "Account → Settings",
             "https://edstem.org/au/settings/api-tokens",
@@ -53,7 +54,8 @@ class CrossPlatformDocumentationTests(unittest.TestCase):
             "this_week_due",
             "this_semester_due",
             "canvas-ed-mcp serve --profile default",
-            "## 7. 常见问题",
+            "## 6. Python package 与源码构建",
+            "## 8. 常见问题",
         ):
             self.assertIn(required, text)
 

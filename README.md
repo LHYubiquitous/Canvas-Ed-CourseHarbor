@@ -38,44 +38,36 @@ command and does not download anything.
 The historical write-capable server and personal scripts are not included in the
 public source candidate, wheel, or sdist.
 
-## 1. Install
+## 1. Download and open the desktop app
 
-Download `canvas_ed_mcp-0.2.0rc18-py3-none-any.whl` from the
-[v0.2.0rc18 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18)
-and place it in a new folder. Python 3.10–3.14 is supported. Keep this folder:
-generated launchers point to the virtual environment inside it.
+Most users should download a desktop package from the
+[v0.2.0rc18 release](https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor/releases/tag/v0.2.0rc18).
+No separate Python installation is required for these packages.
 
-### Windows PowerShell
+### Windows 10/11 x86_64
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
-.\.venv\Scripts\canvas-ed-mcp.exe --version
-```
+1. Download `CourseHarbor-v0.2.0rc18-windows-x86_64-portable.zip`.
+2. Extract the complete ZIP to a folder you intend to keep. Do not run the executable
+   from inside the ZIP or move only one file out of the extracted folder.
+3. Open `CourseHarbor.exe`.
 
-If `py` is unavailable, replace it with the full path to an installed Python.
-Activate the environment with:
+The Windows package is an unsigned portable app, not an installer. Windows may show an
+unrecognized-app warning. Compare the download with `SHA256SUMS` before running it.
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
+### macOS on Apple silicon
 
-### macOS or Linux
+1. Download `CourseHarbor-v0.2.0rc18-macos-arm64.dmg`.
+2. Open the DMG and drag **CourseHarbor** into **Applications**.
+3. Launch CourseHarbor from Applications.
 
-```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install ./canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
-source ./.venv/bin/activate
-canvas-ed-mcp --version
-```
+This DMG supports Apple silicon (`arm64`) only. It is ad-hoc signed and not
+Apple-notarized, so Gatekeeper acceptance is `DEGRADED`; verify `SHA256SUMS` before
+opening it. Intel and universal builds remain `NOT_RUN`.
 
-For installation from a reviewed source checkout, replace the wheel path with `.`.
-More update, rollback, and Linux keyring details are in
-[Cross-platform installation](docs/INSTALLATION.md).
-The remaining examples assume the virtual environment is active. You can instead use
-the full `.venv` executable path shown above.
+Python package installation, CLI/MCP use, and source builds are intentionally kept in
+the separate [Python package and source-build section](#6-python-package-and-source-builds).
 
-## 2. Store credentials
+## 2. Configure Canvas and Ed API access
 
 ### Get a Canvas API token
 
@@ -108,8 +100,9 @@ the settings page reached from the signed-in account rather than guessing a host
 
 ### Save and verify tokens in the desktop setup
 
-Start `canvas-ed-setup`, enter the Canvas API base URL if Canvas is enabled, and paste
-each token into its masked **API token** field. Choose **Save and test**. The app first
+Open CourseHarbor. On first run, choose the providers you use, enter the Canvas API base
+URL when Canvas is enabled, and paste each token into its masked **API token** field.
+Choose **Save and test**. The app first
 checks that a secure native credential store is available, then performs one
 provider-isolated, read-only course-list request. Only a successful token is saved to
 the deterministic credential for that profile. The field is cleared when work starts;
@@ -127,7 +120,7 @@ option for CLI/headless configuration. The application layer can test an existin
 reference but cannot overwrite it; this first-run keyring UI does not create `env:`
 references.
 
-### Advanced terminal fallback
+### Terminal fallback for advanced users
 
 Check the operating-system keyring before setup:
 
@@ -160,29 +153,20 @@ MCP host configuration, a screenshot, or a Git repository.
 See [Authentication](docs/AUTHENTICATION.md) for Canvas and Ed personal API tokens,
 revocation, OAuth boundaries, and headless environment references.
 
-## 3. Create your profile
+## 3. Finish first-run setup
 
-Install the optional PySide6 first-run UI from a source checkout with
-`python -m pip install ".[gui]"`, or install a wheel with its `gui` extra. Then start
-the real first-run host with:
-
-```text
-canvas-ed-setup
-```
-
-From a source checkout it can also be run as
-`python -m canvas_ed_mcp.ui.first_run_window`.
-
-It uses the actual profile path and read-only Canvas/Ed course discovery, then hands the
-real catalogues to the reviewed Select → Map → Folders → Review flow. Token fields are
+After each enabled connection passes its read-only test, CourseHarbor discovers the
+course catalogues and opens the reviewed setup flow. Canvas-only and Ed-only profiles
+use **Select → Folders → Review**; **Map** appears only when both providers are enabled
+and an explicit Canvas↔Ed relationship may be needed. Similar names never cause an
+automatic pairing. Token fields are
 masked and transient; configuration receives only deterministic references such as
 `keyring:canvas-ed-mcp/default/canvas`. The final confirmation creates the new
 configuration and any missing empty course folders—no course content, sync state,
 credentials, or launchers. After that save
 succeeds, the completion screen can explicitly install the daily-use shortcuts and
 open either the daily dashboard or their folder. The first real sync remains a
-separate confirmed action. This installable entry point is not yet a signed or frozen
-desktop release.
+separate confirmed action.
 
 Library root selection is intentionally deferred to the Folders step. The root contains
 course folders, `Canvas Ed MCP Launchers`, and due reports, so it is not only a launcher
@@ -195,102 +179,70 @@ the same page and retry; no restart or repeated provider discovery is required. 
 configured roots and course folders remain read-only because configuration never moves
 files.
 
-Preview a new Canvas, Ed, or combined profile:
-
-```text
-canvas-ed-mcp setup --profile default --dry-run
-```
-
-The wizard shows every discovered course and asks which ones to include. Choose
+The setup table shows every discovered course and asks which ones to include. Choose
 `baseline_from_now` to record the current state and download only later changes, or
 `import_all` to download the selected existing material on the first real sync.
-When the preview is correct, create the profile:
+Review shows the exact local layout before **Save configuration** writes anything.
 
-```text
-canvas-ed-mcp setup --profile default
-```
-
-The non-dry-run command asks for a final confirmation before it writes the profile.
-It also installs the daily-use launchers. Validate the result with:
-
-```text
-canvas-ed-mcp config validate PATH_PRINTED_BY_SETUP
-canvas-ed-mcp doctor --profile default --show-paths
-```
-
-To add, remove, remap, or change course settings later, open the graphical editor:
-
-```text
-canvas-ed-configure --profile default
-```
-
-The same editor opens from `configure_courses` and menu option 4. It starts with the
+To add, remove, remap, or change course settings later, open **Courses** and choose the
+configuration action. The editor starts with the
 saved courses selected and shows the exact config diff before saving. Existing folder
 names are read-only in this release. A mapping can be changed only when that source
 has no sync history and its current course folder is absent or empty; otherwise the
 UI explains why it is locked. Saving never moves or deletes files and never starts a
-sync.
+sync. Removing a source from configuration keeps its downloaded files and historical
+state.
 
-The terminal workflow remains available as a fallback:
+## 4. Use the CourseHarbor App Shell
 
-```text
-canvas-ed-mcp configure --profile default --dry-run
-canvas-ed-mcp configure --profile default
-```
+CourseHarbor opens First run when no profile exists, opens the only healthy profile
+directly, or shows **Profile chooser** when multiple profiles exist or one needs
+attention. Profile inspection is local-only and does not contact Canvas or Ed.
 
-Removing a source from configuration keeps its downloaded files and historical state.
+### Library
 
-## 4. Daily use
+Choose **Preview course material** to perform read-only discovery. Review the exact
+per-course and per-provider actions, expand any warning summary, then choose **Apply
+reviewed changes**. Preview never writes course content; Apply writes only the actions
+shown in that reviewed plan. The operation stays off the Qt event loop and exposes
+progress and cancellation.
 
-After setup or a configuration change, native launchers can be installed in
-`<output root>/Canvas Ed MCP Launchers`. Double-click `canvas_ed_app` for the PySide6
-CourseHarbor App Shell, or use `course_material_sync`, `this_week_due`, and
-`this_semester_due` directly.
-Existing edited launchers are never overwritten; a changed managed replacement is
-written with a `.new` suffix for review. In that collision case, setup offers the
-shortcuts folder for review and does not run the preserved canonical file as the new
-dashboard.
+### Due dates
 
-When the optional `gui` extra is installed, open the desktop app with:
+**This week** and **Semester** are independent views. Each has its own **Load** action,
+export folder, and explicit **Export** action, so loading a report does not write it and
+the two report types may use different destinations. Published reports are create-only:
+changed content receives a numbered revision rather than overwriting the previous file.
 
-```text
-courseharbor
-```
+### Courses
 
-With no arguments, CourseHarbor starts First run when no profile exists, opens the only
-healthy profile directly, or shows a local Profile chooser when multiple profiles exist
-or one needs attention. Profile inspection is local-only and does not contact Canvas or
-Ed. `canvas-ed-app --profile default` remains available for explicit-profile and recovery
-workflows. The installed `courseharbor` GUI entry point avoids a normal Windows console;
-the public `v0.2.0rc18` GitHub prerelease includes a self-contained Windows onedir
-bundle that passed automated startup/relocation checks and an owner-confirmed visible
-journey. It also includes an audited arm64 macOS DMG that passed owner-device Finder,
-drag-install, App Shell, setup, Connections, and real Keychain save/test/replace checks.
-The DMG is ad-hoc signed and not notarized; Gatekeeper remains `DEGRADED`.
-A signed installer and upgrade/uninstall flow remain `NOT_RUN`.
+Expand a course to see retained sync runs, then expand a run to see every file added or
+updated and its exact local destination. This local report history contains no tokens or
+raw provider exception text. Course configuration is also opened from this area.
 
-The single window provides Library, Due dates, Courses, Connections, Health & About,
-and Open local library. Library keeps the asynchronous reviewed preview/apply boundary.
-Course-material discovery uses bounded read-only concurrency and Canvas bulk indexes,
-while apply remains ordered and serial. Due dates has independent **This week** and
-**Semester** tabs; each report has its own Load action, export folder, and explicit
-Export action. Choosing a folder never writes a report. Courses expands each course into
-locally retained sync runs and then into the files added or updated, including the exact
-local destination. This report history contains no credentials or provider error text.
-Connections uses masked transient inputs and the native credential store. Closing during
-work requests cooperative cancellation before provider sessions are released. The tested
-numbered terminal menu remains available as `canvas-ed-mcp app` for CLI workflows.
-Use **Switch profile** in the navigation rail to return to the chooser after active work
-has reached a safe cancellation boundary.
-During a new setup, **Open daily dashboard** replaces the completed setup journey with
-the App Shell in the same process. The standalone setup command keeps its detached
-fallback so it remains independently usable.
+### Connections
 
-Closing course selection during an embedded new-profile setup returns to the refreshed
-Profile chooser. **Remove profile…** removes a selected profile from the chooser only
-after targeted confirmation. CourseHarbor revision-checks and moves its config to the
-private `.removed` archive beside the profile configs; it does not delete downloaded
+Use **Test existing** to diagnose the stored Canvas or Ed credential with a read-only,
+provider-isolated request. To rotate a token, paste it into the masked **Replacement
+token** field and choose **Save and test**. Leave the field blank to retain the current
+credential. `env:` references are externally managed and cannot be replaced in the UI.
+
+### Health & About and local files
+
+**Health & About** shows non-secret package, profile, path, and keyring readiness. **Open
+local library** opens the configured library root; each course folder already exists
+after setup. Closing the app during background work requests cooperative cancellation
+before provider sessions are released.
+
+Use **Switch profile** to return to Profile chooser. **Remove profile…** archives only
+the selected profile config after targeted confirmation; it does not delete downloaded
 course files, native credentials, sync state, logs/cache, or revoke a remote token.
+
+### Optional daily-use shortcuts
+
+Setup can create native shortcuts under `<library root>/Canvas Ed MCP Launchers`.
+Existing user-edited shortcuts are never overwritten; a changed managed candidate is
+written with a `.new` suffix for review.
 
 | Launcher | Result |
 |---|---|
@@ -306,13 +258,14 @@ Due reports are create-only: changed content receives a numbered revision instea
 overwriting the previous report. Semester reports preserve checked boxes and notes
 attached to stable item markers.
 
-## 5. Command-line and MCP use
+## 5. Advanced CLI and MCP
 
 The same functions are available as short CLI commands:
 
 ```text
 canvas-ed-mcp sync --profile default --dry-run
 canvas-ed-mcp sync --profile default
+canvas-ed-mcp setup --profile default --dry-run
 canvas-ed-mcp due week --profile default
 canvas-ed-mcp due semester --profile default
 canvas-ed-mcp configure-gui --profile default
@@ -351,6 +304,52 @@ canvas-ed-mcp sync --profile default --course LOGICAL_COURSE_KEY --dry-run
 
 Removing `--dry-run` writes local state and course output. It never writes to Canvas
 or Ed. `course-sync` is a compatibility placeholder; use `canvas-ed-mcp sync`.
+
+## 6. Python package and source builds
+
+This section is for developers, CLI/MCP users, and platforms without a frozen desktop
+package. It is not required for the Windows portable app or macOS DMG.
+
+### Install the reviewed wheel
+
+Python 3.10–3.14 is supported. Download
+`canvas_ed_mcp-0.2.0rc18-py3-none-any.whl` from the release, then create an isolated
+environment and install the GUI extra:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install .\canvas_ed_mcp-0.2.0rc18-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install "PySide6>=6.8,<7"
+.\.venv\Scripts\courseharbor.exe
+```
+
+On macOS or Linux, use `python3 -m venv .venv`, then the equivalent
+wheel and `PySide6>=6.8,<7` install commands through `./.venv/bin/python`.
+The package is not published to PyPI.
+
+### Build and run from source
+
+```text
+git clone https://github.com/LHYubiquitous/Canvas-Ed-CourseHarbor.git
+cd Canvas-Ed-CourseHarbor
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[gui]"
+.\.venv\Scripts\courseharbor.exe
+```
+
+On macOS or Linux, replace `py` with `python3`, then use `./.venv/bin/python` and
+`./.venv/bin/courseharbor`. For the locked contributor environment, install `uv
+0.11.28` and run:
+
+```text
+uv sync --locked --all-extras --group dev
+uv run --locked python -B ci/run_release_tests.py --root .
+```
+
+The public release source is the audited clean-source archive, not the private
+development history. Packaging details and exact verification boundaries are in
+[Testing and operations](docs/TESTING_AND_OPERATIONS.md) and
+[Release/security audit](docs/RELEASE_AUDIT.md).
 
 ## Known limitations and privacy
 
