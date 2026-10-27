@@ -61,6 +61,9 @@ unrecognized-app warning. Compare the download with `SHA256SUMS` before running 
 2. Open the DMG and drag **CourseHarbor** into **Applications**.
 3. Launch CourseHarbor from Applications.
 
+**Current limitation:** before using this release, set macOS **System Settings →
+Appearance** to **Light**; Dark Mode is not yet supported.
+
 This DMG supports Apple silicon (`arm64`) only. It is ad-hoc signed and not
 Apple-notarized, so Gatekeeper acceptance is `DEGRADED`; verify `SHA256SUMS` before
 opening it. Intel and universal builds remain `NOT_RUN`.

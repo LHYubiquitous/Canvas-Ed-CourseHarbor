@@ -34,6 +34,9 @@ Windows 包是 unsigned portable app，不是 installer。系统可能显示“�
 2. 打开 DMG，把 **CourseHarbor** 拖进 **Applications**。
 3. 从 Applications 启动 CourseHarbor。
 
+**当前限制：** 使用此版本前，请在 macOS **系统设置 → 外观** 中选择 **浅色**；
+目前尚不支持深色模式。
+
 当前 DMG 仅支持 Apple silicon (`arm64`)，使用 ad-hoc signing，尚未经过 Apple
 notarization，因此 Gatekeeper 状态为 `DEGRADED`；运行前请核对 `SHA256SUMS`。Intel / universal
 build 仍为 `NOT_RUN`。
