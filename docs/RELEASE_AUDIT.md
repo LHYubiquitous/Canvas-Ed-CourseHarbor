@@ -1,5 +1,27 @@
 # Release and Security Audit
 
+## 0.2.0rc20 linked-material and macOS readability candidate
+
+Status: **PASS — PUBLIC AND PRIVATE GITHUB PRERELEASES PUBLISHED**
+Audit date: 2026-11-09
+
+This candidate discovers non-image Canvas attachments linked from module Page bodies,
+supports the current exact-host Ed Resource redirect flow without widening the credential
+boundary, preserves sanitized provider failure categories, and assigns explicit readable
+table-item colors when macOS uses Dark appearance. It also adds a CI-built and audited
+Windows x86_64 portable artifact alongside the audited macOS arm64 DMG.
+
+| Gate | rc20 result |
+|---|---|
+| Focused regressions | `PASS`: Page-linked attachment discovery, Ed 307 delegation, provider error categories, and selected/unselected Dark-appearance rows |
+| Complete synthetic suite | `PASS`: repository release suite on the final source tree |
+| Deterministic source/wheel/sdist | `PASS`: clean-source, wheel, and sdist build/audit gate |
+| Windows portable build/audit/smoke | `PASS`: CI-built x86_64 portable ZIP and manifest |
+| macOS arm64 DMG build/audit/smoke | `PASS`: CI-built, mounted, smoke-tested DMG and manifest; owner-device rc20 rerun `NOT_RUN` |
+| Remote private/public CI | `PASS`: final tagged commits across Python 3.10–3.14 on Windows, macOS, and Linux, plus distribution and platform-package gates |
+| GitHub tag/prerelease | `PASS`: matching `v0.2.0rc20` prereleases and 10-asset sets in both repositories; earlier tags remain immutable |
+| PyPI/package-index publication | `NOT_RUN / NOT AUTHORIZED` |
+
 ## 0.2.0rc19 Courses history responsiveness candidate
 
 Status: **PASS — PUBLIC AND PRIVATE GITHUB PRERELEASES PUBLISHED**

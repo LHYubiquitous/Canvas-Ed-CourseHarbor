@@ -1,6 +1,6 @@
 # 测试、部署与运行
 
-> 当前本地发布候选为 `v0.2.0rc20`；GitHub 已发布版本仍为 `v0.2.0rc19`。rc20 包含
+> 当前 GitHub 预发布版本为 `v0.2.0rc20`。rc20 包含
 > CourseHarbor App Shell、图形化
 > credential workflow、独立 due-date 页面、sync-run reports、经过审核的 Windows
 > portable bundle 与 arm64 macOS DMG，并修复 Courses 历史记录展开/收起时的 Windows

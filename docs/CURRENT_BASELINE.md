@@ -58,8 +58,8 @@ Phase 0 在 2026-10-13 又增加 13 个 synthetic/mock tests；当前 Windows �
 
 ## Portable 0.2 status
 
-The current local release-prep tree is `0.2.0rc20`; the published public prerelease
-remains immutable at `0.2.0rc19`.
+The current public and private GitHub prerelease is `0.2.0rc20`; earlier release tags
+remain immutable.
 The published `v0.1.0rc1` remains a separate immutable artifact. rc10 product behavior
 completed the Windows/macOS owner review and three-system private CI. rc14 added
 non-destructive graphical reconfiguration; rc15 added the macOS button-contrast fix.
