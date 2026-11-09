@@ -2,9 +2,10 @@
 
 Status: rc18 Windows onedir and macOS arm64 `.app`/DMG candidates `PASS`; both visible
 owner journeys `PASS`. rc19 retains those packaging paths and adds an owner-verified
-Windows Courses-tree accessibility repair; its full automated packaging rerun is the
-release gate. Developer ID signing, notarization, Intel/universal packaging, and
-upgrade/uninstall remain `NOT_RUN`; Gatekeeper remains `DEGRADED`.
+Windows Courses-tree accessibility repair. rc20 is the local candidate for linked-file,
+Ed Resource, and macOS Dark-appearance repairs. Developer ID signing, notarization,
+Intel/universal packaging, and upgrade/uninstall remain `NOT_RUN`; Gatekeeper remains
+`DEGRADED`.
 
 ## 1. Startup lifecycle
 

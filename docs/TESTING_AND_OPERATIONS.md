@@ -1,9 +1,11 @@
 # 测试、部署与运行
 
-> 当前发布候选为 `v0.2.0rc19`。该版本包含 CourseHarbor App Shell、图形化
+> 当前本地发布候选为 `v0.2.0rc20`；GitHub 已发布版本仍为 `v0.2.0rc19`。rc20 包含
+> CourseHarbor App Shell、图形化
 > credential workflow、独立 due-date 页面、sync-run reports、经过审核的 Windows
 > portable bundle 与 arm64 macOS DMG，并修复 Courses 历史记录展开/收起时的 Windows
-> accessibility cache 卡死。旧版本保持不可变，实时发布状态以 public repository 的 GitHub
+> accessibility cache 卡死，并加入 Page-linked Canvas 文件、COMP2022 Ed Resource 下载与
+> macOS 深色系统外观修复。旧版本保持不可变，实时发布状态以 public repository 的 GitHub
 > Release 页面为准；PyPI 未授权、未执行。
 
 > rc18 arm64 DMG 已通过 private CI audit 和 owner-device Finder、drag-install、App Shell、

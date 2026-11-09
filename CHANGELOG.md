@@ -3,7 +3,7 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
-## [Unreleased]
+## [0.2.0rc20] - 2026-11-09
 
 ### Content discovery and reliability
 

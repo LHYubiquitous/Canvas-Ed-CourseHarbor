@@ -58,8 +58,8 @@ Phase 0 在 2026-10-13 又增加 13 个 synthetic/mock tests；当前 Windows �
 
 ## Portable 0.2 status
 
-The current private tree and public prerelease are `0.2.0rc19`, a focused
-Courses-history responsiveness successor; public `v0.2.0rc18` remains immutable.
+The current local release-prep tree is `0.2.0rc20`; the published public prerelease
+remains immutable at `0.2.0rc19`.
 The published `v0.1.0rc1` remains a separate immutable artifact. rc10 product behavior
 completed the Windows/macOS owner review and three-system private CI. rc14 added
 non-destructive graphical reconfiguration; rc15 added the macOS button-contrast fix.
@@ -68,6 +68,8 @@ and the delivered runner was not executable as written. rc16 carries human-reada
 course metadata through the reviewed-sync summary and rebuilds the runner. rc18 added
 the audited arm64 macOS DMG. rc19 refreshes the Qt accessibility cell cache after a
 Courses branch collapses so Windows UI Automation cannot navigate stale sibling indexes.
+rc20 adds Page-linked Canvas files, exact-host Ed Resource delegation, diagnostic
+failure categories, and readable light application surfaces under macOS Dark appearance.
 
 Portable `canvas-ed-mcp sync` now composes the same protected decision/storage/state
 primitives for explicitly configured Canvas and Ed sources. Canvas discovery includes
