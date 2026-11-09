@@ -176,7 +176,12 @@ class DailyDashboardStyleContractTests(unittest.TestCase):
         self.application.setQuitOnLastWindowClosed(False)
         self.original_palette = QPalette(self.application.palette())
         dark_palette = QPalette(self.original_palette)
-        dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor("#ffffff"))
+        for role in (
+            QPalette.ColorRole.ButtonText,
+            QPalette.ColorRole.Text,
+            QPalette.ColorRole.WindowText,
+        ):
+            dark_palette.setColor(role, QColor("#ffffff"))
         self.application.setPalette(dark_palette)
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name).resolve()
@@ -209,6 +214,14 @@ class DailyDashboardStyleContractTests(unittest.TestCase):
         foreground = self.window.open_button.palette().color(
             QPalette.ColorRole.ButtonText
         )
+
+        self.assertEqual("#172033", foreground.name())
+
+    def test_white_table_surface_defines_dark_text_for_a_dark_system_palette(self) -> None:
+        from PySide6.QtGui import QPalette
+
+        self.window.source_table.ensurePolished()
+        foreground = self.window.source_table.palette().color(QPalette.ColorRole.Text)
 
         self.assertEqual("#172033", foreground.name())
 

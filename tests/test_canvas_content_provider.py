@@ -502,6 +502,76 @@ class CanvasContentProviderTests(unittest.TestCase):
         self.assertEqual("authorization_failed", batch.issues[0].category)
         self.assertFalse(batch.issues[0].retry_required)
 
+    def test_page_linked_pdf_is_discovered_when_course_files_are_forbidden(self) -> None:
+        requests: list[str] = []
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            requests.append(request.url.path)
+            routes: dict[str, httpx.Response] = {
+                "/api/v1/courses/1/modules": httpx.Response(
+                    200,
+                    json=[{
+                        "id": 10,
+                        "name": "Week 13",
+                        "items": [{
+                            "id": 2,
+                            "type": "Page",
+                            "url": "/api/v1/courses/1/pages/lecture",
+                        }],
+                    }],
+                ),
+                "/api/v1/courses/1/pages/lecture": httpx.Response(
+                    200,
+                    json={
+                        "page_id": 200,
+                        "url": "lecture",
+                        "title": "Lecture notes",
+                        "updated_at": "2026-11-09T00:00:00Z",
+                        "body": (
+                            '<p><a href="https://canvas.example.edu/courses/1/'
+                            'files/53670243">COMP3419-2026_W13_Notes_.pdf</a></p>'
+                        ),
+                    },
+                ),
+                "/api/v1/files/53670243": httpx.Response(
+                    200,
+                    json={
+                        "id": 53670243,
+                        "display_name": "COMP3419-2026_W13_Notes_.pdf",
+                        "size": 42,
+                        "content-type": "application/pdf",
+                        "updated_at": "2026-11-09T00:00:00Z",
+                        "url": "https://canvas.example.edu/files/53670243/download",
+                    },
+                ),
+                "/api/v1/courses/1/files": httpx.Response(403),
+            }
+            return routes[request.url.path]
+
+        provider = CanvasProvider(
+            "https://canvas.example.edu/api/v1",
+            "token",
+            client=httpx.Client(transport=httpx.MockTransport(respond)),
+        )
+        try:
+            batch = provider.list_items(
+                "1", kinds=frozenset({RemoteKind.FILE, RemoteKind.PAGE})
+            )
+        finally:
+            provider.close()
+
+        self.assertEqual(
+            [
+                (RemoteKind.FILE, "53670243", "Week 13"),
+                (RemoteKind.PAGE, "lecture", "Week 13"),
+            ],
+            [(entry.key.kind, entry.key.remote_id, entry.group) for entry in batch.items],
+        )
+        self.assertIn("/api/v1/files/53670243", requests)
+        coverage = {entry.kind: entry.status for entry in batch.coverage}
+        self.assertEqual(CoverageStatus.PARTIAL, coverage[RemoteKind.FILE])
+        self.assertEqual(CoverageStatus.COMPLETE, coverage[RemoteKind.PAGE])
+
     def test_item_authorization_failure_is_partial_and_non_retryable(self) -> None:
         def respond(request: httpx.Request) -> httpx.Response:
             routes: dict[str, httpx.Response] = {

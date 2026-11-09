@@ -701,7 +701,7 @@ class DailyDashboardWindow(QMainWindow):
         self.setStyleSheet(
             """
             QMainWindow, QWidget#daily_workspace { background: #F6F8FB; color: #172033; }
-            QWidget { font-family: "Segoe UI Variable", "SF Pro Text", "Segoe UI"; font-size: 10pt; }
+            QWidget { color: #172033; font-family: "Segoe UI Variable", "SF Pro Text", "Segoe UI"; font-size: 10pt; }
             QFrame#brand_mark { background: #2F6FED; border-radius: 2px; }
             QLabel#brand_eyebrow { color: #2F6FED; font-size: 8pt; font-weight: 750; letter-spacing: 1px; }
             QLabel#daily_title { font-size: 18pt; font-weight: 650; color: #172033; }
@@ -725,7 +725,7 @@ class DailyDashboardWindow(QMainWindow):
             QFrame#warning_panel[tone="error"] QLabel#notice_details { color: #7A1E1E; }
             QFrame#warning_panel[tone="error"] QPushButton#notice_toggle_button,
             QFrame#warning_panel[tone="error"] QPushButton#notice_close_button { color: #7A1E1E; }
-            QTableWidget#source_review { background: #FFFFFF; border: 1px solid #D9E1EC; border-radius: 5px; selection-background-color: #E5EDFF; selection-color: #15243A; gridline-color: #E8EDF4; }
+            QTableWidget#source_review { color: #172033; background: #FFFFFF; border: 1px solid #D9E1EC; border-radius: 5px; selection-background-color: #E5EDFF; selection-color: #15243A; gridline-color: #E8EDF4; }
             QTableWidget#source_review:focus { border: 2px solid #3B6FF5; }
             QHeaderView::section { background: #EDF2F8; color: #384961; padding: 8px; border: none; border-bottom: 1px solid #D9E1EC; font-weight: 650; }
             QTableWidget::item { padding: 7px; }

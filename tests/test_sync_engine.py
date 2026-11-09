@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from canvas_ed_mcp.config import ContentSelection, CourseConfig, CourseSource, DownloadPolicy
 from canvas_ed_mcp.providers.base import (
     CategoryCoverage, ContentBatch, ContentIssue, CoverageStatus, IssueScope,
+    ProviderError,
 )
 from canvas_ed_mcp.renderers.html import RenderedHtml
 from canvas_ed_mcp.sync.engine import (
@@ -648,6 +649,39 @@ class SyncEngineTests(unittest.TestCase):
                 )
             self.assertEqual("install_new", retried.items[0].action)
             self.assertFalse(retried.state_updates[0].retry_required)
+
+    def test_provider_failure_category_is_preserved_without_error_text(self) -> None:
+        class CategorizedFailureProvider(FakeProvider):
+            @contextmanager
+            def open_binary(self, item: RemoteItem, *, chunk_size: int = 64 * 1024):
+                raise ProviderError(
+                    "size_mismatch",
+                    "private upstream detail must not enter the report",
+                )
+                yield iter(())
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            course, source = self.course(InitialSyncMode.IMPORT_ALL)
+            lock = SyncLock.for_course(
+                lock_dir=root / ".locks", profile="test", output_root=root,
+                course_key=course.key, course_root=PurePosixPath(course.folder),
+            )
+            with lock:
+                result = sync_course_source(
+                    course=course, source=source,
+                    provider=CategorizedFailureProvider((
+                        item(RemoteKind.RESOURCE, "notes"),
+                    )),
+                    output_root=root, previous=(), execution=ExecutionMode.APPLY,
+                    initialized=True, course_lock=lock, cache_dir=root / ".cache",
+                )
+
+        self.assertEqual("failed", result.items[0].action)
+        self.assertEqual("content_processing_failed", result.items[0].reason)
+        self.assertEqual(("size_mismatch",), result.items[0].issue_codes)
+        self.assertIn("size_mismatch", result.issue_codes)
+        self.assertNotIn("private upstream detail", repr(result))
 
     def test_stream_size_overflow_persists_policy_skip_without_final_file(self) -> None:
         with TemporaryDirectory() as directory:

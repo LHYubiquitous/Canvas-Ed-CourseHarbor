@@ -173,7 +173,7 @@ class EdProviderTests(unittest.TestCase):
 
         self.assertEqual(["/api/courses/1/resources"], requests)
 
-    def test_resource_stream_uses_post_and_drops_bearer_on_redirect(self) -> None:
+    def test_resource_stream_drops_bearer_on_untrusted_delegated_post(self) -> None:
         api_requests: list[httpx.Request] = []
         asset_requests: list[httpx.Request] = []
 
@@ -194,12 +194,13 @@ class EdProviderTests(unittest.TestCase):
                     },
                 )
             return httpx.Response(
-                302,
+                307,
                 headers={"Location": "https://cdn.example.test/file.pdf?signature=private"},
             )
 
         def asset_respond(request: httpx.Request) -> httpx.Response:
             asset_requests.append(request)
+            self.assertEqual("POST", request.method)
             self.assertNotIn("authorization", request.headers)
             return httpx.Response(200, content=b"PDF")
 
@@ -225,6 +226,174 @@ class EdProviderTests(unittest.TestCase):
         )
         self.assertEqual("Bearer synthetic-token", api_requests[1].headers["authorization"])
         self.assertEqual(1, len(asset_requests))
+
+    def test_current_resource_host_receives_bearer_only_for_delegated_post(self) -> None:
+        asset_requests: list[httpx.Request] = []
+
+        def api_respond(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET":
+                return httpx.Response(
+                    200,
+                    json={
+                        "resources": [{
+                            "id": 7,
+                            "name": "Practice exam",
+                            "extension": ".pdf",
+                            "size": 3,
+                        }]
+                    },
+                )
+            return httpx.Response(
+                307,
+                headers={
+                    "Location": (
+                        "https://static.edusercontent.com/file.pdf?signature=synthetic"
+                    )
+                },
+            )
+
+        def asset_respond(request: httpx.Request) -> httpx.Response:
+            asset_requests.append(request)
+            self.assertEqual("POST", request.method)
+            self.assertEqual(
+                "Bearer synthetic-token", request.headers["authorization"]
+            )
+            self.assertNotIn("cookie", request.headers)
+            return httpx.Response(200, content=b"PDF")
+
+        provider = EdProvider(
+            "synthetic-token",
+            client=httpx.Client(transport=httpx.MockTransport(api_respond)),
+            asset_client=httpx.Client(transport=httpx.MockTransport(asset_respond)),
+        )
+        try:
+            item = provider.list_items(
+                "course-1", kinds=frozenset({RemoteKind.RESOURCE})
+            ).require_complete()[0]
+            with provider.open_binary(item) as chunks:
+                self.assertEqual(b"PDF", b"".join(chunks))
+        finally:
+            provider.close()
+
+        self.assertEqual(1, len(asset_requests))
+
+    def test_delegated_resource_authorization_rejects_non_default_port(self) -> None:
+        asset_requests: list[httpx.Request] = []
+        provider = EdProvider(
+            "synthetic-token",
+            client=httpx.Client(
+                transport=httpx.MockTransport(lambda request: httpx.Response(500))
+            ),
+            asset_client=httpx.Client(
+                transport=httpx.MockTransport(
+                    lambda request: asset_requests.append(request)
+                    or httpx.Response(200)
+                )
+            ),
+        )
+        try:
+            with self.assertRaises(ProviderError) as caught:
+                with provider._asset_stream(
+                    "https://static.edusercontent.com:444/file.pdf",
+                    method="POST",
+                    delegated_authorization=True,
+                ):
+                    pass
+        finally:
+            provider.close()
+
+        self.assertEqual("unsafe_redirect", caught.exception.category)
+        self.assertEqual([], asset_requests)
+
+    def test_current_resource_host_get_redirect_remains_credential_free(self) -> None:
+        def api_respond(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET":
+                return httpx.Response(
+                    200,
+                    json={
+                        "resources": [{
+                            "id": 7,
+                            "name": "Notes",
+                            "extension": ".pdf",
+                            "size": 3,
+                        }]
+                    },
+                )
+            return httpx.Response(
+                302,
+                headers={
+                    "Location": "https://static.edusercontent.com/file.pdf"
+                },
+            )
+
+        def asset_respond(request: httpx.Request) -> httpx.Response:
+            self.assertEqual("GET", request.method)
+            self.assertNotIn("authorization", request.headers)
+            return httpx.Response(200, content=b"PDF")
+
+        provider = EdProvider(
+            "synthetic-token",
+            client=httpx.Client(transport=httpx.MockTransport(api_respond)),
+            asset_client=httpx.Client(transport=httpx.MockTransport(asset_respond)),
+        )
+        try:
+            item = provider.list_items(
+                "course-1", kinds=frozenset({RemoteKind.RESOURCE})
+            ).require_complete()[0]
+            with provider.open_binary(item) as chunks:
+                self.assertEqual(b"PDF", b"".join(chunks))
+        finally:
+            provider.close()
+
+    def test_delegated_resource_failure_redacts_bearer_and_signed_url(self) -> None:
+        def api_respond(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET":
+                return httpx.Response(
+                    200,
+                    json={
+                        "resources": [{
+                            "id": 7,
+                            "name": "Notes",
+                            "extension": ".pdf",
+                        }]
+                    },
+                )
+            return httpx.Response(
+                307,
+                headers={
+                    "Location": (
+                        "https://static.edusercontent.com/file.pdf?signature=synthetic"
+                    )
+                },
+            )
+
+        def asset_respond(request: httpx.Request) -> httpx.Response:
+            self.assertEqual(
+                "Bearer synthetic-token", request.headers["authorization"]
+            )
+            return httpx.Response(403)
+
+        provider = EdProvider(
+            "synthetic-token",
+            client=httpx.Client(transport=httpx.MockTransport(api_respond)),
+            asset_client=httpx.Client(transport=httpx.MockTransport(asset_respond)),
+        )
+        try:
+            item = provider.list_items(
+                "course-1", kinds=frozenset({RemoteKind.RESOURCE})
+            ).require_complete()[0]
+            try:
+                with provider.open_binary(item) as chunks:
+                    b"".join(chunks)
+            except ProviderError as error:
+                formatted = "".join(traceback.format_exception(error))
+            else:
+                self.fail("download unexpectedly succeeded")
+        finally:
+            provider.close()
+
+        self.assertNotIn("synthetic-token", formatted)
+        self.assertNotIn("signature=synthetic", formatted)
 
     def test_forged_item_is_rejected_before_network(self) -> None:
         requests: list[httpx.Request] = []

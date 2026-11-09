@@ -1,6 +1,6 @@
 # 调研来源
 
-> 检索/复核日期：2026-10-14。只记录公开、无 token、无签名参数的 URL。
+> 检索/复核日期：2026-11-09。只记录公开、无 token、无签名参数的 URL。
 
 | ID | URL | Supports | Status |
 |---|---|---|---|
@@ -30,9 +30,11 @@
 | SRC-024 | https://github.com/modelcontextprotocol/python-sdk/releases/tag/v2.2.0 | 当前 reviewed stable v2 release 与行为变化 | VERIFIED official release |
 | SRC-025 | https://static.au.edusercontent.com/ | owner-device 真实 Ed Lesson 审核观察到的精确静态资源 host；仅记录 origin，不保留路径或签名 query。Ed 公开 API/asset 文档仍不可用 | OWNER-DEVICE OBSERVED; official documentation DEGRADED |
 | SRC-026 | https://developerdocs.instructure.com/services/canvas/resources/modules | Canvas Modules 与 paginated module items；File/Page module item 类型和顺序 | VERIFIED official |
-| SRC-027 | https://developerdocs.instructure.com/services/canvas/file.all_resources/files | Course Files list、File metadata、size/content-type/download URL | VERIFIED official |
+| SRC-027 | https://developerdocs.instructure.com/services/canvas/resources/files | Course Files list、single-file lookup、File metadata、size/content-type/download URL | VERIFIED official |
 | SRC-028 | https://developerdocs.instructure.com/services/canvas/resources/pages | Page stable locator、title/body 与 single-page lookup | VERIFIED official |
 | SRC-029 | https://community.instructure.com/en/kb/articles/485223-canvas-domain-email-and-server-management | Instructure 官方列出的 Canvas browser-security/content domains，包括动态 `*.canvas-user-content.com` 与 Canvas images/file storage 使用的 `*.inscloudgate.net` | VERIFIED official resource document |
 | SRC-030 | https://developerdocs.instructure.com/services/canvas/resources/assignments | Canvas course Assignments list、`due_at`、`points_possible`、quiz assignment indicator、`order_by=due_at` 与 user-applicable assignment overrides | VERIFIED official |
+| SRC-031 | https://doc.qt.io/qt-6/stylesheet-syntax.html | Qt Style Sheet cascading/inheritance；子控件不会自动继承父控件文字颜色，需要对目标 widgets 明确设置 `color` | VERIFIED official |
+| SRC-032 | https://static.edusercontent.com/ | 2026-11-09 owner-device 只读探针观察到 Ed Resource 下载使用 `307` 委托到此精确 host；无凭据请求返回 401。Owner 明确授权 exact-host Bearer delegation 后，5 个当前 COMP2022 PDF 完整下载且 byte size 匹配；Ed 公开 API/asset 文档仍不可用 | OWNER-DEVICE VERIFIED; official documentation DEGRADED |
 
 动态版本、release、平台支持和政策在真正发布前必须重新检查，不能把本表当作永久事实。

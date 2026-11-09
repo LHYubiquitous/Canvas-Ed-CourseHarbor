@@ -529,6 +529,31 @@ class CanvasProvider(_CanvasCatalogProvider):
             media_type="text/html",
         )
 
+    def _page_file_ids(self, page: dict[str, Any]) -> tuple[str, ...]:
+        body = page.get("body")
+        if body is None:
+            return ()
+        if not isinstance(body, str):
+            raise ProviderError("schema_drift", "Canvas page body is invalid")
+        references: list[str] = []
+        soup = BeautifulSoup(body, "html.parser")
+        for element in soup.find_all(True):
+            candidates: list[object] = [element.get("data-api-endpoint")]
+            if element.name == "a":
+                candidates.append(element.get("href"))
+            for candidate in candidates:
+                if not isinstance(candidate, str) or not candidate:
+                    continue
+                decoded = html.unescape(candidate)
+                parsed = urlparse(decoded)
+                if parsed.scheme or parsed.netloc:
+                    if _origin(decoded) != self._origin:
+                        continue
+                match = _FILE_REFERENCE.search(parsed.path)
+                if match is not None and match.group(1) not in references:
+                    references.append(match.group(1))
+        return tuple(references)
+
     def _issue(
         self,
         *,
@@ -703,7 +728,10 @@ class CanvasProvider(_CanvasCatalogProvider):
                 )
             )
         )
-        if RemoteKind.PAGE in kinds and RemoteKind.PAGE not in failed and page_endpoints:
+        if (
+            (RemoteKind.PAGE in kinds or RemoteKind.FILE in kinds)
+            and page_endpoints
+        ):
             with ThreadPoolExecutor(max_workers=min(4, len(page_endpoints))) as executor:
                 futures = tuple(executor.submit(self._api_json, endpoint) for endpoint in page_endpoints)
                 for endpoint, future in zip(page_endpoints, futures):
@@ -766,10 +794,8 @@ class CanvasProvider(_CanvasCatalogProvider):
                         staged_file_items[item.key] = item
                         staged_files[item.key] = dict(metadata)
                         staged_items.append(item)
-                elif (
-                    item_type == "Page"
-                    and RemoteKind.PAGE in kinds
-                    and RemoteKind.PAGE not in failed
+                elif item_type == "Page" and (
+                    RemoteKind.PAGE in kinds or RemoteKind.FILE in kinds
                 ):
                     try:
                         endpoint = _safe_text(module_item.get("url"), "page API URL")
@@ -781,31 +807,97 @@ class CanvasProvider(_CanvasCatalogProvider):
                             raise ProviderError(
                                 "schema_drift", "Canvas page response is invalid"
                             )
-                        item = self._page_item(page, course_id=course_id, group=group)
+                        page_item = self._page_item(
+                            page, course_id=course_id, group=group
+                        )
                     except ProviderError as exc:
                         if exc.category == "authentication_failed":
                             raise
-                        issues.append(
-                            self._issue(
-                                course_id=course_id,
-                                kind=RemoteKind.PAGE,
-                                code=(
-                                    "item_schema_drift"
-                                    if exc.category == "schema_drift"
-                                    else "item_request_failed"
-                                ),
-                                category=exc.category,
-                                retry_required=exc.category not in {
-                                    "schema_drift", "authorization_failed"
-                                },
-                                item_index=current_index,
+                        for affected_kind in (
+                            RemoteKind.FILE,
+                            RemoteKind.PAGE,
+                        ):
+                            if affected_kind not in kinds:
+                                continue
+                            issues.append(
+                                self._issue(
+                                    course_id=course_id,
+                                    kind=affected_kind,
+                                    code=(
+                                        "item_schema_drift"
+                                        if exc.category == "schema_drift"
+                                        else "item_request_failed"
+                                    ),
+                                    category=exc.category,
+                                    retry_required=exc.category not in {
+                                        "schema_drift", "authorization_failed"
+                                    },
+                                    item_index=current_index,
+                                )
                             )
-                        )
                         continue
-                    if item.key not in staged_page_items:
-                        staged_page_items[item.key] = item
-                        staged_pages[item.key] = dict(page)
-                        staged_items.append(item)
+
+                    if RemoteKind.FILE in kinds and RemoteKind.FILE not in failed:
+                        for linked_id in self._page_file_ids(page):
+                            try:
+                                metadata = file_metadata_by_id.get(linked_id)
+                                if metadata is None:
+                                    candidate = self._api_json(
+                                        f"{self.base_url}/files/{quote(linked_id, safe='')}"
+                                    )
+                                    metadata = (
+                                        candidate if isinstance(candidate, dict) else None
+                                    )
+                                if not isinstance(metadata, dict):
+                                    raise ProviderError(
+                                        "schema_drift",
+                                        "Canvas file response is invalid",
+                                    )
+                                if _required_id(metadata.get("id"), "file") != linked_id:
+                                    raise ProviderError(
+                                        "schema_drift",
+                                        "Canvas linked file id does not match",
+                                    )
+                                linked_item = self._file_item(
+                                    metadata, course_id=course_id, group=group
+                                )
+                            except ProviderError as exc:
+                                if exc.category == "authentication_failed":
+                                    raise
+                                issues.append(
+                                    self._issue(
+                                        course_id=course_id,
+                                        kind=RemoteKind.FILE,
+                                        code=(
+                                            "item_schema_drift"
+                                            if exc.category == "schema_drift"
+                                            else "item_request_failed"
+                                        ),
+                                        category=exc.category,
+                                        retry_required=exc.category not in {
+                                            "schema_drift", "authorization_failed"
+                                        },
+                                        item_index=current_index,
+                                    )
+                                )
+                                continue
+                            if (
+                                linked_item.media_type or ""
+                            ).casefold().startswith("image/"):
+                                continue
+                            if linked_item.key not in staged_file_items:
+                                staged_file_items[linked_item.key] = linked_item
+                                staged_files[linked_item.key] = dict(metadata)
+                                staged_items.append(linked_item)
+
+                    if (
+                        RemoteKind.PAGE in kinds
+                        and RemoteKind.PAGE not in failed
+                        and page_item.key not in staged_page_items
+                    ):
+                        staged_page_items[page_item.key] = page_item
+                        staged_pages[page_item.key] = dict(page)
+                        staged_items.append(page_item)
 
         if RemoteKind.FILE in kinds and RemoteKind.FILE not in failed:
             if files_issue is not None:

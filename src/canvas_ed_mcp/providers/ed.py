@@ -44,7 +44,10 @@ from .base import (
 
 DEFAULT_ED_BASE_URL = "https://edstem.org/api"
 _EDSTEM_HOST = "edstem.org"
-_DEFAULT_ED_STATIC_ASSET_HOSTS = frozenset({"static.au.edusercontent.com"})
+_ED_AUTHENTICATED_RESOURCE_HOST = "static.edusercontent.com"
+_DEFAULT_ED_STATIC_ASSET_HOSTS = frozenset(
+    {"static.au.edusercontent.com", _ED_AUTHENTICATED_RESOURCE_HOST}
+)
 _LESSON_SIGNATURE_FIELDS = (
     "id",
     "title",
@@ -872,7 +875,17 @@ class EdProvider:
                     if not location:
                         raise ProviderError("request_failed", "Ed resource redirect is invalid")
                     asset_url = urljoin(str(response.url), location)
-                    with self._asset_stream(asset_url) as asset_response:
+                    asset_method = (
+                        "POST" if response.status_code in {307, 308} else "GET"
+                    )
+                    with self._asset_stream(
+                        asset_url,
+                        method=asset_method,
+                        delegated_authorization=(
+                            asset_method == "POST"
+                            and self._is_authenticated_resource_url(asset_url)
+                        ),
+                    ) as asset_response:
                         asset_response.raise_for_status()
                         yield asset_response.iter_bytes(chunk_size=chunk_size)
                     return
@@ -915,18 +928,50 @@ class EdProvider:
         self,
         url: str,
         *,
+        method: str = "GET",
+        delegated_authorization: bool = False,
         redirects_remaining: int = 3,
     ) -> Iterator[httpx.Response]:
+        if method not in {"GET", "POST"}:
+            raise ValueError("Ed asset method must be GET or POST")
         self._validate_asset_url(url)
-        with self._asset_client.stream("GET", url, follow_redirects=False) as response:
+        if delegated_authorization and (
+            method != "POST" or not self._is_authenticated_resource_url(url)
+        ):
+            raise ProviderError(
+                "unsafe_redirect", "Ed delegated resource URL is unsafe"
+            )
+        headers = (
+            {"Authorization": self._headers["Authorization"]}
+            if delegated_authorization
+            else None
+        )
+        with self._asset_client.stream(
+            method,
+            url,
+            headers=headers,
+            follow_redirects=False,
+        ) as response:
             if response.is_redirect:
                 if redirects_remaining == 0:
                     raise ProviderError("unsafe_redirect", "Ed asset redirect limit exceeded")
                 location = response.headers.get("location")
                 if not location:
                     raise ProviderError("request_failed", "Ed asset redirect is invalid")
+                next_method = (
+                    method
+                    if response.status_code in {307, 308}
+                    else "GET"
+                )
+                next_url = urljoin(str(response.url), location)
                 with self._asset_stream(
-                    urljoin(str(response.url), location),
+                    next_url,
+                    method=next_method,
+                    delegated_authorization=(
+                        delegated_authorization
+                        and next_method == "POST"
+                        and self._is_authenticated_resource_url(next_url)
+                    ),
                     redirects_remaining=redirects_remaining - 1,
                 ) as redirected:
                     yield redirected
@@ -936,11 +981,16 @@ class EdProvider:
     def _validate_asset_url(self, url: str) -> None:
         parsed = urlparse(url)
         hostname = (parsed.hostname or "").casefold()
+        try:
+            port = parsed.port
+        except ValueError:
+            port = -1
         if (
             parsed.scheme != "https"
             or not hostname
             or parsed.username
             or parsed.password
+            or port not in {None, 443}
             or hostname not in self._allowed_asset_hosts
             or hostname == "localhost"
         ):
@@ -951,6 +1001,22 @@ class EdProvider:
             return
         if not address.is_global:
             raise ProviderError("unsafe_redirect", "Ed asset URL is unsafe")
+
+    @staticmethod
+    def _is_authenticated_resource_url(url: str) -> bool:
+        parsed = urlparse(url)
+        try:
+            port = parsed.port
+        except ValueError:
+            return False
+        return (
+            parsed.scheme == "https"
+            and (parsed.hostname or "").casefold()
+            == _ED_AUTHENTICATED_RESOURCE_HOST
+            and port in {None, 443}
+            and parsed.username is None
+            and parsed.password is None
+        )
 
     def _resolve_image(self, reference: str) -> HtmlAssetResolution:
         parsed = urlparse(reference)

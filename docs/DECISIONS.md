@@ -111,3 +111,11 @@
 - Deletion: local deletion is deferred from this vertical slice. A future action must state that deleting a local keyring item does not revoke the Canvas or Ed token remotely.
 - Secret lifetime: raw values may exist only in the masked input and the minimum worker/provider/keyring call chain. They must not enter config, state, logs, exception text, command arguments, environment variables, clipboard, Qt models, accessibility text, screenshots, fixtures, or snapshots. Clearing a widget reduces exposure but is not a claim of physical memory zeroization.
 - 中文说明：采用“先只读验证、后写入 keyring”，使无效 token、网络失败和写入前取消都不会破坏旧凭据；config 后续失败时保留已验证的新凭据并允许重试，不读取旧 token 做不可靠回滚。
+
+## ADR-012 — Bound Ed resource credential delegation to one exact host
+
+- Status: **ACCEPTED FOR IMPLEMENTATION; OWNER AUTHORIZED 2026-11-09**
+- Context: the Ed Resource download endpoint now returns a method-preserving `307` to `https://static.edusercontent.com`; an unauthenticated POST returns 401. Five owner-authorized COMP2022 probes succeeded only when the existing Ed Bearer was delegated to that exact host.
+- Decision: delegate the Ed Bearer only when the authenticated `edstem.org/api` resource endpoint itself returns `307` or `308`, the next request remains `POST`, and the target is HTTPS `static.edusercontent.com` on the default port with no URL credentials. Use the credential-scrubbed asset client with one explicit Authorization header. Do not delegate to wildcard siblings, user-supplied hosts, non-default ports, GET requests, or redirects that leave the exact target.
+- Evidence: five current COMP2022 PDFs downloaded completely and matched their declared byte sizes. The sixth prior retry record is absent from the current Ed resource catalogue.
+- Revisit: remove or narrow this exception if Ed publishes a credential-free download flow or changes the delegated host.

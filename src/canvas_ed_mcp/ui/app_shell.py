@@ -519,7 +519,7 @@ class CourseHarborWindow(QMainWindow):
         self.setStyleSheet(
             """
             QMainWindow#courseharbor_shell, QWidget#shell_root, QStackedWidget#app_pages { background: #F6F8FB; color: #172033; }
-            QWidget { font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
+            QWidget { color: #172033; font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
             QFrame#navigation_rail { background: #13243C; border: none; }
             QFrame#navigation_rail QLabel { background: transparent; border: none; }
             QLabel#shell_brand { color: #FFFFFF; font-size: 18pt; font-weight: 750; }
@@ -537,7 +537,7 @@ class CourseHarborWindow(QMainWindow):
             QFrame#destination_card, QFrame#connection_card, QFrame#health_card, QFrame#about_card, QFrame#report_card { background: #FFFFFF; border: 1px solid #D9E1EC; border-radius: 6px; }
             QLabel#report_heading { background: #EDF2F8; color: #384961; font-weight: 700; border-bottom: 1px solid #D9E1EC; }
             QLabel#about_name { font-size: 14pt; font-weight: 700; }
-            QLineEdit, QPlainTextEdit, QTableWidget, QTreeWidget, QTabWidget::pane { background: #FFFFFF; border: 1px solid #C7D2E2; border-radius: 4px; }
+            QLineEdit, QPlainTextEdit, QTableWidget, QTreeWidget, QTabWidget::pane { color: #172033; background: #FFFFFF; border: 1px solid #C7D2E2; border-radius: 4px; }
             QPlainTextEdit { font-family: "Cascadia Mono", "Consolas"; font-size: 9pt; }
             QHeaderView::section { background: #EDF2F8; color: #384961; padding: 8px; border: none; border-bottom: 1px solid #D9E1EC; font-weight: 650; }
             QPushButton { min-height: 32px; padding: 3px 14px; color: #172033; background: #FFFFFF; border: 1px solid #B9C5D5; border-radius: 5px; }

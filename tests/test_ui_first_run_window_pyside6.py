@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -118,6 +119,50 @@ def _windows_gui_available() -> bool:
         return False
 
 
+@unittest.skipUnless(
+    sys.platform == "darwin" and QApplication is not None,
+    "PySide6 macOS GUI is NOT_RUN",
+)
+class FirstRunWindowStyleContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from PySide6.QtGui import QColor, QPalette
+        from canvas_ed_mcp.ui.first_run_window import FirstRunWindow
+
+        self.application = QApplication.instance() or QApplication([])
+        self.application.setQuitOnLastWindowClosed(False)
+        self.original_palette = QPalette(self.application.palette())
+        dark_palette = QPalette(self.original_palette)
+        for role in (
+            QPalette.ColorRole.ButtonText,
+            QPalette.ColorRole.Text,
+            QPalette.ColorRole.WindowText,
+        ):
+            dark_palette.setColor(role, QColor("#ffffff"))
+        self.application.setPalette(dark_palette)
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.window = FirstRunWindow(
+            profile="style-test",
+            config_path=root / "style-test.toml",
+            output_root=root,
+        )
+        self.window.ensurePolished()
+
+    def tearDown(self) -> None:
+        self.window.close()
+        self.application.setPalette(self.original_palette)
+        self.temporary.cleanup()
+
+    def test_white_text_input_defines_dark_text_for_a_dark_system_palette(self) -> None:
+        from PySide6.QtGui import QPalette
+
+        edit = self.window.profile_page.profile_edit
+        edit.ensurePolished()
+
+        self.assertEqual(
+            "#172033",
+            edit.palette().color(QPalette.ColorRole.Text).name(),
+        )
 @unittest.skipUnless(_windows_gui_available(), "Windows GUI session is unavailable")
 class FirstRunWindowTests(unittest.TestCase):
     @classmethod

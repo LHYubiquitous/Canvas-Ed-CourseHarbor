@@ -71,15 +71,24 @@ Courses branch collapses so Windows UI Automation cannot navigate stale sibling 
 
 Portable `canvas-ed-mcp sync` now composes the same protected decision/storage/state
 primitives for explicitly configured Canvas and Ed sources. Canvas discovery includes
-module-linked Pages/Files in module order plus remaining course Files; the first module
-reference owns grouping, while unlinked Pages are deliberately not enumerated. Pages
-use the self-contained safe HTML renderer. Canvas API Bearer credentials stay on the
+module-linked Pages/Files, non-image file links found inside those Page bodies, and
+remaining course Files; the first module or Page reference owns grouping, while
+unlinked Pages are deliberately not enumerated. This supports student accounts where
+attachments are visible only through Modules or Pages. Pages use the self-contained
+safe HTML renderer. Canvas API Bearer credentials stay on the
 configured origin, and a separate credential-free client defaults to the exact Canvas
 hostname allowlist. Reviewed Canvas image redirects may follow only the ordered exact
 origin → `*.canvas-user-content.com` → `*.inscloudgate.net` chain, with one internal
 inscloudgate delegation before exact-origin pinning; other DNS/CDN hosts fail closed.
-Synthetic status is 332 tests passing with one expected Windows symlink-privilege
-skip. Real Canvas content is `HUMAN_VERIFIED_WITH_WARNINGS`: isolated
+Provider download failures retain a sanitized stable category in item/source reports
+instead of collapsing every cause to a generic failure.
+Ed Resource downloads may delegate the Bearer only for an API-origin `307/308` POST to
+the exact HTTPS default-port host `static.edusercontent.com`; all other asset requests
+remain credential-free. Five current COMP2022 retry resources were owner-device verified
+byte-for-byte against Ed metadata on 2026-11-09; one older retry record is no longer in
+the upstream catalogue.
+The process-isolated release suite currently passes 725 tests with 117 expected
+platform/session skips. Real Canvas content is `HUMAN_VERIFIED_WITH_WARNINGS`: isolated
 import, embedded-image and HTML safety audits, idempotency, secret scan, plus desktop
 and narrow Chromium rendering passed; course-wide Files remains partial after a
 confirmed 403; the owner accepted the visible images and desktop/narrow layouts.

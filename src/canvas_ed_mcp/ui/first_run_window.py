@@ -1054,8 +1054,8 @@ class FirstRunWindow(QWizard):
         self.setStyleSheet(
             """
             QWizard, QWizardPage { background: #F6F8FB; color: #172033; }
-            QWidget { font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
-            QLineEdit, QPlainTextEdit { background: white; border: 1px solid #C7D0DE; border-radius: 5px; padding: 6px; }
+            QWidget { color: #172033; font-family: "Segoe UI Variable", "Segoe UI"; font-size: 10pt; }
+            QLineEdit, QPlainTextEdit { color: #172033; background: white; border: 1px solid #C7D0DE; border-radius: 5px; padding: 6px; }
             QLineEdit:focus, QPlainTextEdit:focus { border: 2px solid #2F6FED; }
             QGroupBox { background: white; border: 1px solid #DDE4F0; border-radius: 7px; margin-top: 10px; padding-top: 10px; font-weight: 650; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }

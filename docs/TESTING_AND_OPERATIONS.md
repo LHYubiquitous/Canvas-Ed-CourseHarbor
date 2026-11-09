@@ -24,8 +24,8 @@
 
 | Req | Scenario | Planned evidence | Current |
 |---|---|---|---|
-| REQ-001 | baseline/new/changed/edited/deleted/duplicate/HTML image | characterization matrix + decision/storage/renderer tests | legacy + portable engine/Ed-only CLI synthetic tests PASS; real baseline PASS; first real import-all quality DEGRADED; remediation HUMAN_VERIFIED_WITH_WARNINGS |
-| REQ-002/003 | secret setup、redaction、revocation docs、OAuth warning | fake keyring + package scan + doc review | keyring/env/redaction MOCK PASS; Canvas docs REVIEWED; Ed evidence DEGRADED |
+| REQ-001 | baseline/new/changed/edited/deleted/duplicate/HTML image/Page-linked file | characterization matrix + decision/storage/renderer tests | portable engine and Page-linked file regression synthetic PASS; real baseline PASS; first real import-all quality DEGRADED; remediation HUMAN_VERIFIED_WITH_WARNINGS |
+| REQ-002/003 | secret setup、redaction、revocation docs、OAuth warning | fake keyring + package scan + doc review | keyring/env/redaction MOCK PASS; exact-host Ed Resource delegation owner-authorized and real-account verified; Ed public docs DEGRADED |
 | REQ-004 | Canvas-only / Ed-only / both | provider matrix tests; no disabled-provider requests | Canvas-only/Ed-only/mixed portable CLI synthetic PASS; Windows real Canvas/Ed content `HUMAN_VERIFIED_WITH_WARNINGS` |
 | REQ-005/006/012 | duplicate code/term、逐项确认、reconfigure diff | CLI golden/snapshot + config round trip | interactive setup/configure synthetic PASS; Windows Ed/Canvas/mixed discovery PASS |
 | REQ-007 | output root/folder conflicts/unwritable path | temp dirs + platform path mocks | path/folder MOCK PASS; unwritable NOT RUN |
@@ -33,7 +33,7 @@
 | REQ-010/014 | Windows/macOS/Linux clean install and entry points | CI matrix + built wheel install | Phase 5 private CI REMOTE VERIFIED across the declared OS/Python matrix and distribution gate |
 | REQ-011 | profiles/output-root isolation/state migration | v3→v5 fixtures + crash/restart tests | state-v5 namespace/backup/migration and engine wiring synthetic PASS; isolated real profiles PASS |
 | REQ-013 | dry-run/cancel | filesystem snapshot remains unchanged | setup/baseline/sync + configure cancel MOCK PASS |
-| REQ-015 | diagnostics/redaction/exit codes | CLI tests + secret canaries | stable CLI categories/redaction MOCK PASS; real failure categories observed without secret disclosure |
+| REQ-015 | diagnostics/redaction/exit codes | CLI tests + secret canaries | provider download category preservation/redaction MOCK PASS; COMP2022 root cause isolated and five current retry resources verified without secret disclosure |
 | REQ-016/017 | allowlist release and compliance | archive manifest + secret/path/license audits | PUBLIC CLEAN-HISTORY RC PASS; GitHub prerelease published; PyPI NOT RUN |
 | REQ-018 | provider-aware MCP | tool catalog/invocation matrix | direct calls + in-memory ClientSession + Windows stdio subprocess MOCK PASS |
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 import hashlib
 import json
+import re
 from dataclasses import replace
 import tempfile
 from dataclasses import dataclass
@@ -12,7 +13,11 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 
 from canvas_ed_mcp.config import CourseConfig, CourseSource
-from canvas_ed_mcp.providers.base import ContentBatch, CourseContentProvider
+from canvas_ed_mcp.providers.base import (
+    ContentBatch,
+    CourseContentProvider,
+    ProviderError,
+)
 
 from .decisions import decide_install, decide_source
 from .locking import LockScope, SyncLock
@@ -861,6 +866,25 @@ def sync_course_source(
             )
             extra = rendered_issues + (("staging_cleanup_pending",) if published.staging_cleanup_pending else ())
             results.append(ItemSyncResult(_item_token(item.key), install.action.value, install.reason.value, destination, retry, extra))
+        except ProviderError as error:
+            category = (
+                error.category
+                if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", error.category)
+                else "provider_failure"
+            )
+            updates.append(
+                PreviousSource(item.key, item.signature, old.stored_file if old else None, True)
+            )
+            results.append(
+                ItemSyncResult(
+                    _item_token(item.key),
+                    "failed",
+                    "content_processing_failed",
+                    retry_required=True,
+                    issue_codes=(category,),
+                )
+            )
+            source_issue_codes.append(category)
         except Exception:
             updates.append(
                 PreviousSource(item.key, item.signature, old.stored_file if old else None, True)

@@ -3,6 +3,22 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
+## [Unreleased]
+
+### Content discovery and reliability
+
+- Discovers non-image Canvas files linked only from module Page bodies, including when
+  a student account cannot list the course-wide Files collection.
+- Supports Ed's exact `static.edusercontent.com` method-preserving resource delegation
+  without forwarding credentials to other asset hosts, methods, or ports.
+- Preserves sanitized provider failure categories in sync reports so repeated item
+  failures are diagnosable without exposing upstream payloads or credentials.
+
+### macOS appearance
+
+- Defines dark foreground colors for CourseHarbor's light cards, tables, inputs, and
+  setup surfaces so text remains readable when macOS uses Dark appearance.
+
 ## [0.2.0rc19] - 2026-10-26
 
 ### Courses history responsiveness
