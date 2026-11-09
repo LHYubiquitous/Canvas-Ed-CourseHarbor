@@ -87,8 +87,9 @@ the exact HTTPS default-port host `static.edusercontent.com`; all other asset re
 remain credential-free. Five current COMP2022 retry resources were owner-device verified
 byte-for-byte against Ed metadata on 2026-11-09; one older retry record is no longer in
 the upstream catalogue.
-The process-isolated release suite currently passes 725 tests with 117 expected
-platform/session skips. Real Canvas content is `HUMAN_VERIFIED_WITH_WARNINGS`: isolated
+The process-isolated release suite currently completes 725 tests with zero failures
+and 117 expected platform/session skips. Real Canvas content is
+`HUMAN_VERIFIED_WITH_WARNINGS`: isolated
 import, embedded-image and HTML safety audits, idempotency, secret scan, plus desktop
 and narrow Chromium rendering passed; course-wide Files remains partial after a
 confirmed 403; the owner accepted the visible images and desktop/narrow layouts.
