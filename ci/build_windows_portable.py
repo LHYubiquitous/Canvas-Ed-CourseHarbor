@@ -38,6 +38,16 @@ def _pyinstaller_environment() -> dict[str, str]:
     return environment
 
 
+def _portable_forbidden_roots(repository: Path, work: Path) -> tuple[Path, ...]:
+    """Return precise build roots without treating the runner's whole home as secret."""
+    return (
+        repository,
+        Path(sys.executable).resolve().parent,
+        Path(sys.base_prefix).resolve(),
+        work,
+    )
+
+
 def build_windows_portable(root: Path, output: Path) -> Path:
     repository = root.resolve(strict=True)
     destination = output.resolve(strict=False)
@@ -49,13 +59,6 @@ def build_windows_portable(root: Path, output: Path) -> Path:
     spec = repository / "packaging" / "windows" / "courseharbor.spec"
     if not spec.is_file():
         raise PortableBuildError("portable build failed: spec_missing")
-    host_roots = (
-        repository,
-        Path.home(),
-        Path(sys.executable).resolve().parent,
-        Path(sys.base_prefix).resolve(),
-    )
-
     with tempfile.TemporaryDirectory(
         prefix=".courseharbor-portable-", dir=destination.parent
     ) as temporary:
@@ -88,13 +91,13 @@ def build_windows_portable(root: Path, output: Path) -> Path:
         candidate = work / "dist" / "CourseHarbor"
         audit_windows_portable(
             candidate,
-            forbidden_roots=(*host_roots, work),
+            forbidden_roots=_portable_forbidden_roots(repository, work),
         )
         shutil.copytree(candidate, destination)
 
     result = audit_windows_portable(
         destination,
-        forbidden_roots=(*host_roots, work),
+        forbidden_roots=_portable_forbidden_roots(repository, work),
     )
     manifest = destination.parent / f"{destination.name}-manifest.json"
     manifest.write_text(

@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from ci.build_windows_portable import _pyinstaller_environment
+from ci.build_windows_portable import _portable_forbidden_roots, _pyinstaller_environment
 from ci.verify_windows_portable import (
     PortableBundleAuditError,
     audit_windows_portable,
@@ -13,6 +13,14 @@ from ci.verify_windows_portable import (
 
 
 class WindowsPortableAuditTests(unittest.TestCase):
+    def test_forbidden_roots_are_precise_and_do_not_scan_the_entire_home(self) -> None:
+        repository = Path("D:/a/CourseHarbor")
+        work = Path("D:/a/_temp/build")
+        roots = _portable_forbidden_roots(repository, work)
+        self.assertEqual(repository, roots[0])
+        self.assertEqual(work, roots[-1])
+        self.assertNotIn(Path.home(), roots)
+
     def test_pyinstaller_environment_drops_injected_tool_paths(self) -> None:
         with patch.dict(
             "os.environ",
