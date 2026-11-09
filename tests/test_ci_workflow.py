@@ -69,6 +69,17 @@ class CIWorkflowTests(unittest.TestCase):
         self.assertIn("retention-days: 14", text)
         self.assertNotIn("gh release upload", text)
 
+    def test_workflow_builds_a_windows_portable_zip_without_publishing_it(self) -> None:
+        text = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("windows_portable:", text)
+        self.assertIn("ci/build_windows_portable.py", text)
+        self.assertIn("CourseHarbor-v${VERSION}-windows-x86_64-portable", text)
+        self.assertIn('$ZIP = "${OUTPUT}.zip"', text)
+        self.assertIn('"manifest_path=${OUTPUT}-manifest.json"', text)
+        self.assertIn("retention-days: 14", text)
+        self.assertNotIn("gh release upload", text)
+
 
 if __name__ == "__main__":
     unittest.main()

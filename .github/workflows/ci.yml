@@ -132,6 +132,48 @@ jobs:
       - name: Validate clean-source installation
         run: python -m pip check
 
+  windows_portable:
+    name: Build and audit Windows x86_64 portable bundle
+    needs: [test, build]
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install locked packaging environment
+        run: |
+          python -m pip install --upgrade pip "uv==0.11.28"
+          uv lock --check
+          uv sync --locked --all-extras
+      - name: Build and audit portable bundle
+        id: portable
+        shell: pwsh
+        run: |
+          $VERSION = (uv run --locked python -c 'from ci.release_gate import read_project_version; print(read_project_version("."))').Trim()
+          $OUTPUT = Join-Path $env:RUNNER_TEMP "CourseHarbor-v${VERSION}-windows-x86_64-portable"
+          uv run --locked --all-extras python -B ci/build_windows_portable.py `
+            --root . `
+            --output $OUTPUT
+          $ZIP = "${OUTPUT}.zip"
+          Compress-Archive -Path $OUTPUT -DestinationPath $ZIP
+          "artifact_name=CourseHarbor-v${VERSION}-windows-x86_64-portable" >> $env:GITHUB_OUTPUT
+          "zip_path=${ZIP}" >> $env:GITHUB_OUTPUT
+          "manifest_path=${OUTPUT}-manifest.json" >> $env:GITHUB_OUTPUT
+      - name: Upload audited portable candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.portable.outputs.artifact_name }}
+          path: |
+            ${{ steps.portable.outputs.zip_path }}
+            ${{ steps.portable.outputs.manifest_path }}
+          if-no-files-found: error
+          retention-days: 14
+
   macos_dmg:
     name: Build and audit macOS arm64 DMG
     needs: [test, build]
