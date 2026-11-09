@@ -10,7 +10,7 @@ from pathlib import Path
 from threading import Event
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QUrl, Signal, Slot, Qt
-from PySide6.QtGui import QCloseEvent, QDesktopServices
+from PySide6.QtGui import QBrush, QCloseEvent, QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -626,6 +626,7 @@ class DailyDashboardWindow(QMainWindow):
 
     def _render_sources(self, sources: tuple[SyncSourceSummary, ...]) -> None:
         self.source_table.setRowCount(len(sources))
+        item_foreground = QBrush(QColor("#172033"))
         for row, source in enumerate(sources):
             issue_count = len(source.issue_codes)
             warning = (
@@ -648,6 +649,7 @@ class DailyDashboardWindow(QMainWindow):
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                item.setForeground(item_foreground)
                 item.setToolTip(
                     "\n".join(_issue_code_text(code) for code in source.issue_codes)
                     if column == 3 and source.issue_codes

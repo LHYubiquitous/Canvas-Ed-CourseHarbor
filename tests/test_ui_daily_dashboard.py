@@ -225,6 +225,25 @@ class DailyDashboardStyleContractTests(unittest.TestCase):
 
         self.assertEqual("#172033", foreground.name())
 
+    def test_unselected_table_item_defines_dark_text_for_a_dark_system_palette(self) -> None:
+        from PySide6.QtGui import QPalette
+        from PySide6.QtWidgets import QStyleOptionViewItem
+
+        self.window._render_sources(_review(self.root).sources)
+        self.window.source_table.clearSelection()
+        self.window.source_table.ensurePolished()
+        self.application.processEvents()
+        index = self.window.source_table.model().index(0, 0)
+        option = QStyleOptionViewItem()
+        self.window.source_table.itemDelegate().initStyleOption(option, index)
+
+        for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
+            with self.subTest(group=group):
+                self.assertEqual(
+                    "#172033",
+                    option.palette.color(group, QPalette.ColorRole.Text).name(),
+                )
+
     def test_confirmation_buttons_keep_dark_text_on_the_light_button_surface(self) -> None:
         from PySide6.QtGui import QPalette
         from PySide6.QtWidgets import QMessageBox

@@ -16,8 +16,9 @@ Semantic Versioning; release-candidate versions are not stable API commitments.
 
 ### macOS appearance
 
-- Defines dark foreground colors for CourseHarbor's light cards, tables, inputs, and
-  setup surfaces so text remains readable when macOS uses Dark appearance.
+- Defines dark foreground colors for CourseHarbor's light cards, inputs, and setup
+  surfaces, and assigns every material-review table item an explicit dark foreground so
+  selected and unselected rows remain readable when macOS uses Dark appearance.
 
 ## [0.2.0rc19] - 2026-10-26
 
