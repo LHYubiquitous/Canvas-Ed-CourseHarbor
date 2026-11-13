@@ -1,5 +1,26 @@
 # Release and Security Audit
 
+## 0.2.0rc21 synchronization performance candidate
+
+Status: **LOCAL RELEASE SUITE, CLEAN INSTALL, AND DETERMINISTIC PACKET PASS; REMOTE GATES PENDING**
+Audit date: 2026-11-13
+
+The candidate reuses one local index per course-source apply and bounds Ed Lesson
+requests to four per provider connection, including concurrent course discovery.
+New tests cover moved subfolders, same-run duplicate detection, publication/index
+refresh races, cross-course limits, and authentication failure batches.
+
+The rc20 comparison used synthetic data only: 1,500 existing files plus 60 new files
+completed in 6.653s before and 0.293s after index reuse; 40 lessons with simulated
+30ms request latency completed in 1.386s before and 0.384s after parallel discovery.
+These single-run measurements are not real-account or end-to-end speed guarantees.
+
+Owner-device real-account performance, interactive installer acceptance, Developer ID
+signing, and notarization remain NOT_RUN for this candidate. Existing ad-hoc signing
+and platform limitations remain unchanged. Publication is authorized for the existing
+public/private GitHub repositories only; PyPI remains outside scope. Release-page
+checks and linked CI runs supply the final artifact/publication evidence.
+
 ## 0.2.0rc20 linked-material and macOS readability candidate
 
 Status: **PASS — PUBLIC AND PRIVATE GITHUB PRERELEASES PUBLISHED**

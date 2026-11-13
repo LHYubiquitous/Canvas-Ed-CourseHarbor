@@ -14,8 +14,9 @@ import mimetypes
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from threading import RLock
+from threading import BoundedSemaphore, RLock
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlparse, urlsplit, urlunsplit
 
@@ -384,6 +385,7 @@ class EdProvider:
         self._lesson_items: dict[SourceKey, RemoteItem] = {}
         self._resource_items: dict[SourceKey, RemoteItem] = {}
         self._cache_lock = RLock()
+        self._lesson_slots = BoundedSemaphore(4)
 
     def close(self) -> None:
         with self._cache_lock:
@@ -742,6 +744,11 @@ class EdProvider:
             output.append(item)
         return output, issues, staged
 
+    def _lesson_detail(self, remote_id: str) -> dict[str, Any]:
+        # A provider is shared by concurrent course discovery operations.
+        with self._lesson_slots:
+            return self._json(f"/lessons/{quote(remote_id, safe='')}")
+
     def _list_lessons(
         self, course_id: str, encoded_course_id: str
     ) -> tuple[
@@ -758,6 +765,7 @@ class EdProvider:
         staged_items: dict[SourceKey, RemoteItem] = {}
         staged_snapshots: dict[SourceKey, dict[str, Any]] = {}
         seen_ids: set[str] = set()
+        validated: list[tuple[int, str]] = []
         for index, summary in enumerate(summaries):
             remote_id: str | None = None
             try:
@@ -792,51 +800,61 @@ class EdProvider:
                 )
                 continue
 
-            try:
-                payload = self._json(f"/lessons/{quote(remote_id, safe='')}")
-                lesson = payload.get("lesson")
-                if not isinstance(lesson, dict) or lesson.get("id") is None:
-                    raise ProviderError("schema_drift", "Ed lesson detail has no stable id")
-                if _required_id(lesson["id"], "lesson detail") != remote_id:
-                    raise ProviderError("schema_drift", "Ed lesson detail id does not match")
-                title = _optional_text(lesson.get("title"), "lesson title") or "Ed Lesson"
-                _lesson_body(lesson)
-                key = SourceKey(
-                    provider="ed",
-                    instance=self.instance,
-                    course_id=course_id,
-                    kind=RemoteKind.LESSON,
-                    remote_id=remote_id,
-                )
-                item = RemoteItem(
-                    key=key,
-                    signature=_semantic_lesson_signature(lesson),
-                    display_name=f"{title}.html",
-                    group="Ed Lessons",
-                    media_type="text/html",
-                )
-            except (ProviderError, ValueError) as caught:
-                error = (
-                    caught
-                    if isinstance(caught, ProviderError)
-                    else ProviderError("schema_drift", "Ed lesson detail is invalid")
-                )
-                if error.category == "authentication_failed":
-                    raise
-                issues.append(
-                    self._item_issue(
-                        course_id,
-                        RemoteKind.LESSON,
-                        error,
-                        item_index=index,
-                        remote_id=remote_id,
-                        detail=True,
-                    )
-                )
-                continue
-            staged_items[item.key] = item
-            staged_snapshots[item.key] = lesson
-            output.append(item)
+            validated.append((index, remote_id))
+
+        # Only one small batch is in flight: failures cannot queue the whole course.
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for offset in range(0, len(validated), 4):
+                pending = [
+                    (index, remote_id, executor.submit(self._lesson_detail, remote_id))
+                    for index, remote_id in validated[offset:offset + 4]
+                ]
+                for index, remote_id, future in pending:
+                    try:
+                        payload = future.result()
+                        lesson = payload.get("lesson")
+                        if not isinstance(lesson, dict) or lesson.get("id") is None:
+                            raise ProviderError("schema_drift", "Ed lesson detail has no stable id")
+                        if _required_id(lesson["id"], "lesson detail") != remote_id:
+                            raise ProviderError("schema_drift", "Ed lesson detail id does not match")
+                        title = _optional_text(lesson.get("title"), "lesson title") or "Ed Lesson"
+                        _lesson_body(lesson)
+                        key = SourceKey(
+                            provider="ed",
+                            instance=self.instance,
+                            course_id=course_id,
+                            kind=RemoteKind.LESSON,
+                            remote_id=remote_id,
+                        )
+                        item = RemoteItem(
+                            key=key,
+                            signature=_semantic_lesson_signature(lesson),
+                            display_name=f"{title}.html",
+                            group="Ed Lessons",
+                            media_type="text/html",
+                        )
+                    except (ProviderError, ValueError) as caught:
+                        error = (
+                            caught
+                            if isinstance(caught, ProviderError)
+                            else ProviderError("schema_drift", "Ed lesson detail is invalid")
+                        )
+                        if error.category == "authentication_failed":
+                            raise
+                        issues.append(
+                            self._item_issue(
+                                course_id,
+                                RemoteKind.LESSON,
+                                error,
+                                item_index=index,
+                                remote_id=remote_id,
+                                detail=True,
+                            )
+                        )
+                        continue
+                    staged_items[item.key] = item
+                    staged_snapshots[item.key] = lesson
+                    output.append(item)
         return output, issues, staged_items, staged_snapshots
 
     def _validate_item(self, item: RemoteItem, kind: RemoteKind) -> None:

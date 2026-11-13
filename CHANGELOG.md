@@ -3,6 +3,20 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
+## [0.2.0rc21] - 2026-11-13
+
+### Faster material synchronization
+
+- Reuses a lazily built course-source file index throughout each apply operation,
+  adding newly published files without repeatedly walking the entire course tree.
+- Checks Ed Lesson details in batches with at most four concurrent detail requests
+  shared across courses using the same provider connection.
+- Preserves content-based duplicate checks, user-edit protection, unchanged-source
+  skips after subfolder moves, and sanitized per-item errors. Failed index refreshes
+  do not turn successfully saved files into download retries.
+- Adds regression coverage for directory scan counts, moved subfolders, newly
+  installed duplicates, cross-course concurrency, and authentication failure bounds.
+
 ## [0.2.0rc20] - 2026-11-09
 
 ### Content discovery and reliability

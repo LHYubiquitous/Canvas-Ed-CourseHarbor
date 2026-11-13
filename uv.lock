@@ -103,7 +103,7 @@ wheels = [
 
 [[package]]
 name = "canvas-ed-mcp"
-version = "0.2.0rc20"
+version = "0.2.0rc21"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

@@ -80,6 +80,61 @@ class SyncEngineTests(unittest.TestCase):
             "cache_dir": root / ".cache",
         }
 
+    def test_batch_scans_once_and_deduplicates_newly_installed_files(self):
+        from canvas_ed_mcp.sync.storage import CourseFileIndex
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            course, source = self.course(InitialSyncMode.IMPORT_ALL)
+            provider = FakeProvider(tuple(item(RemoteKind.RESOURCE, str(i)) for i in range(12)))
+            with patch.object(CourseFileIndex, "scan", wraps=CourseFileIndex.scan) as scan:
+                result = apply_configured_source(
+                    profile="test", course=course, source=source,
+                    provider=provider, output_root=root, **self._apply_paths(root),
+                )
+            self.assertTrue(result.commit.committed)
+            actions = [entry.action for entry in result.source_result.items]
+            self.assertEqual(1, actions.count("install_new"))
+            self.assertEqual(11, actions.count("deduplicate"))
+            self.assertEqual(1, scan.call_count)
+
+    def test_index_refresh_failure_keeps_successful_publication(self):
+        from canvas_ed_mcp.sync.storage import CourseFileIndex
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            course, source = self.course(InitialSyncMode.IMPORT_ALL)
+            provider = FakeProvider((item(RemoteKind.RESOURCE, "notes"),))
+            with patch.object(CourseFileIndex, "include_published", side_effect=OSError("file moved")):
+                result = apply_configured_source(
+                    profile="test", course=course, source=source,
+                    provider=provider, output_root=root, **self._apply_paths(root),
+                )
+            self.assertTrue(result.commit.committed)
+            self.assertEqual(["install_new"], [entry.action for entry in result.source_result.items])
+            self.assertEqual(1, len(result.commit.state.sources))
+            self.assertFalse(result.commit.state.sources[0].retry_required)
+
+    def test_moving_subfolder_does_not_redownload_unchanged_content(self):
+        from canvas_ed_mcp.sync.storage import CourseFileIndex
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            course, source = self.course(InitialSyncMode.IMPORT_ALL)
+            provider = FakeProvider((item(RemoteKind.RESOURCE, "notes"),))
+            first = apply_configured_source(
+                profile="test", course=course, source=source,
+                provider=provider, output_root=root, **self._apply_paths(root),
+            )
+            old = root / first.commit.state.sources[0].stored_file.output_relative_path
+            old.parent.rename(old.parent.with_name("Organized"))
+            with patch.object(CourseFileIndex, "scan", wraps=CourseFileIndex.scan) as scan:
+                second = apply_configured_source(
+                    profile="test", course=course, source=source,
+                    provider=provider, output_root=root, **self._apply_paths(root),
+                )
+            self.assertEqual(1, provider.binary_calls)
+            self.assertEqual("skip", second.source_result.items[0].action)
+            self.assertEqual(0, scan.call_count)
+            self.assertEqual(b"course content", (old.parent.with_name("Organized") / old.name).read_bytes())
+
     def test_reconcile_import_all_is_consumed_once_then_incremental(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

@@ -154,7 +154,7 @@ class AtomicPublishUnsupported(RuntimeError):
 
 
 class CourseFileIndex:
-    """Deterministic, read-only snapshot of regular files within one course root."""
+    """Course file index, extended after successful publication within a sync run."""
 
     def __init__(
         self,
@@ -229,6 +229,20 @@ class CourseFileIndex:
 
         indexed.sort(key=lambda item: item.output_relative_path.as_posix().casefold())
         return cls(output_root=root, course_root=course_root, files=tuple(indexed))
+
+    def include_published(self, relative: PurePosixPath) -> None:
+        """Index a newly published file without traversing the course again."""
+        if not _is_course_path(relative, self.course_root):
+            raise ValueError("published file is outside the course root")
+        path = resolve_contained_path(self.output_root, relative, must_exist=True)
+        metadata = path.stat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("published file must be regular")
+        item = IndexedFile(relative, metadata.st_size)
+        self.files += (item,)
+        self._by_size[item.size_bytes] = self._by_size.get(item.size_bytes, ()) + (item,)
+        name = _normalized(relative.name)
+        self._by_name[name] = self._by_name.get(name, ()) + (item,)
 
     def _absolute(self, item: IndexedFile) -> Path:
         if not _is_course_path(item.output_relative_path, self.course_root):

@@ -38,3 +38,5 @@
 | SRC-032 | https://static.edusercontent.com/ | 2026-11-09 owner-device 只读探针观察到 Ed Resource 下载使用 `307` 委托到此精确 host；无凭据请求返回 401。Owner 明确授权 exact-host Bearer delegation 后，5 个当前 COMP2022 PDF 完整下载且 byte size 匹配；Ed 公开 API/asset 文档仍不可用 | OWNER-DEVICE VERIFIED; official documentation DEGRADED |
 
 动态版本、release、平台支持和政策在真正发布前必须重新检查，不能把本表当作永久事实。
+
+2026-11-13: HTTPX Client thread sharing verified against https://www.python-httpx.org/api/#client. Ed endpoints and credential delegation are unchanged; Ed API documentation remains unofficial/degraded.

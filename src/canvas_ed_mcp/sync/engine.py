@@ -744,6 +744,7 @@ def sync_course_source(
     ):
         source_issue_codes.append("content_capability_partial")
 
+    index: CourseFileIndex | None = None
     for item in sorted(batch.items, key=lambda value: value.key.identity_tuple):
         prior_skip = prior_skips.get(item.key)
         if (
@@ -821,7 +822,8 @@ def sync_course_source(
                 )
                 continue
             assert temporary is not None
-            index = CourseFileIndex.scan(output_root=output_root, course_root=course_root)
+            if index is None:
+                index = CourseFileIndex.scan(output_root=output_root, course_root=course_root)
             observation = (
                 index.observe(old.stored_file)
                 if old is not None and old.stored_file is not None
@@ -864,6 +866,11 @@ def sync_course_source(
             updates.append(
                 PreviousSource(item.key, item.signature, published.stored_file, retry)
             )
+            try:
+                index.include_published(published.stored_file.output_relative_path)
+            except (OSError, ValueError):
+                # Publication succeeded; refresh failures must not turn it into a retry.
+                index = None
             extra = rendered_issues + (("staging_cleanup_pending",) if published.staging_cleanup_pending else ())
             results.append(ItemSyncResult(_item_token(item.key), install.action.value, install.reason.value, destination, retry, extra))
         except ProviderError as error:

@@ -20,6 +20,84 @@ from canvas_ed_mcp.sync.model import RemoteItem, RemoteKind, SourceKey
 
 
 class EdProviderTests(unittest.TestCase):
+    def test_lesson_details_overlap_with_bounded_concurrency(self):
+        from threading import Event, Lock
+        from collections import Counter
+        gate, lock = Event(), Lock()
+        active = peak = 0
+        paths = []
+        def respond(request):
+            nonlocal active, peak
+            if request.url.path.endswith("/lessons"):
+                return httpx.Response(200, json={"lessons": [{"id": i} for i in range(8)]})
+            with lock:
+                paths.append(request.url.path)
+                active += 1
+                peak = max(peak, active)
+                if active >= 2:
+                    gate.set()
+            gate.wait(0.3)
+            with lock:
+                active -= 1
+            ident = request.url.path.rsplit("/", 1)[1]
+            return httpx.Response(200, json={"lesson": {"id": ident, "title": "Lesson", "slides": []}})
+        provider = EdProvider("synthetic-token", client=httpx.Client(transport=httpx.MockTransport(respond)))
+        try:
+            batch = provider.list_items("course-1", kinds=frozenset({RemoteKind.LESSON}))
+        finally:
+            provider.close()
+        self.assertEqual(8, len(batch.items))
+        self.assertEqual(8, len(Counter(paths)))
+        self.assertTrue(all(count == 1 for count in Counter(paths).values()))
+        self.assertGreaterEqual(peak, 2)
+        self.assertLessEqual(peak, 4)
+        self.assertEqual([str(i) for i in range(8)], [item.key.remote_id for item in batch.items])
+
+    def test_parallel_courses_share_lesson_request_limit(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Lock
+        import time
+        lock = Lock()
+        active = peak = 0
+        def respond(request):
+            nonlocal active, peak
+            if "/courses/" in request.url.path:
+                course = request.url.path.split("/")[-2]
+                return httpx.Response(200, json={"lessons": [{"id": course + str(i)} for i in range(8)]})
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            return httpx.Response(200, json={"lesson": {"id": request.url.path.rsplit("/", 1)[1], "slides": []}})
+        provider = EdProvider("synthetic-token", client=httpx.Client(transport=httpx.MockTransport(respond)))
+        try:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = [executor.submit(provider.list_items, course, kinds=frozenset({RemoteKind.LESSON})) for course in ("a", "b")]
+                batches = [future.result() for future in futures]
+            self.assertEqual([8, 8], [len(batch.items) for batch in batches])
+            self.assertLessEqual(peak, 4)
+            self.assertGreaterEqual(peak, 2)
+        finally:
+            provider.close()
+
+    def test_authentication_failure_stops_after_first_lesson_batch(self):
+        paths = []
+        def respond(request):
+            if "/courses/" in request.url.path:
+                return httpx.Response(200, json={"lessons": [{"id": i} for i in range(20)]})
+            paths.append(request.url.path)
+            return httpx.Response(401)
+        provider = EdProvider("synthetic-token", client=httpx.Client(transport=httpx.MockTransport(respond)))
+        try:
+            with self.assertRaises(ProviderError) as caught:
+                provider.list_items("test", kinds=frozenset({RemoteKind.LESSON}))
+            self.assertEqual("authentication_failed", caught.exception.category)
+            self.assertLessEqual(len(paths), 4)
+        finally:
+            provider.close()
+
     def test_course_catalog_preserves_each_stable_id_without_guessing_latest(self) -> None:
         requests: list[httpx.Request] = []
 
