@@ -603,6 +603,8 @@ class DailyDashboardItemProgressTests(unittest.TestCase):
                 self.assertIn("Downloading attachment", window.progress_label.text())
                 self.assertIn("Canvas · <notes.pdf>", window.progress_label.text())
                 self.assertIn("1/3", window.progress_label.text())
+                self.assertTrue(window.progress_label.wordWrap())
+                self.assertLess(window.progress_label.text().index("1/3"), window.progress_label.text().index("<notes.pdf>"))
                 self.assertEqual(Qt.TextFormat.PlainText, window.progress_label.textFormat())
                 self.assertEqual(1, window.progress_bar.value())
                 self.assertEqual(3, window.progress_bar.maximum())

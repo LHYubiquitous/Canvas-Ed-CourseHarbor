@@ -323,6 +323,7 @@ class DailyDashboardWindow(QMainWindow):
         self.progress_label = QLabel("Ready to preview")
         self.progress_label.setObjectName("progress_label")
         self.progress_label.setAccessibleName("Sync progress")
+        self.progress_label.setWordWrap(True)
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setFixedWidth(190)
@@ -524,14 +525,15 @@ class DailyDashboardWindow(QMainWindow):
             "items_cancelled": "Stopped",
         }
         label = item_stages.get(event.code, _PHASE_COPY.get(event.phase, "Working"))
-        if event.item_token in self._apply_item_labels:
-            label += " · " + self._apply_item_labels[event.item_token]
         if event.total is not None and event.total > 0:
             self.progress_bar.setRange(0, event.total)
             self.progress_bar.setValue(event.completed)
             label += f" · {event.completed}/{event.total}"
         else:
             self.progress_bar.setRange(0, 0)
+        if event.item_token in self._apply_item_labels:
+            item_label = self._apply_item_labels[event.item_token]
+            label += "\n" + (item_label[:160] + "…" if len(item_label) > 160 else item_label)
         self.progress_label.setTextFormat(Qt.TextFormat.PlainText)
         self.progress_label.setText(label)
 
