@@ -31,3 +31,22 @@ def cancellation_scope(callback: Callable[[], bool] | None):
         yield
     finally:
         _callback.reset(token)
+
+
+_progress_callback: ContextVar[Callable[[str], None] | None] = ContextVar("sync_progress", default=None)
+
+@contextmanager
+def progress_scope(callback: Callable[[str], None] | None):
+    token = _progress_callback.set(callback)
+    try:
+        yield
+    finally:
+        _progress_callback.reset(token)
+
+def report_progress(stage: str) -> None:
+    callback = _progress_callback.get()
+    if callback is not None:
+        try:
+            callback(stage)
+        except Exception:
+            pass

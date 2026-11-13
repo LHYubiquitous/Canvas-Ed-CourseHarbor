@@ -429,6 +429,7 @@ def apply_reviewed_sync_plan(
     lock_dir: Path,
     cache_dir: Path,
     cancellation_requested: Callable[[], bool] | None = None,
+    item_progress: Callable[[int, int, str, str | None], None] | None = None,
 ) -> RunTransactionResult:
     """Apply the sealed batches after in-lock revision and binding checks."""
 
@@ -471,6 +472,8 @@ def apply_reviewed_sync_plan(
             return _conflict("state_changed")
         if state_revision != plan.state_revision:
             return _conflict("state_changed")
+        item_offset = 0
+        item_total = sum(len(entry.batch.items) for entry in plan.sources)
         for index, entry in enumerate(plan.sources):
             if _cancelled(cancellation_requested):
                 return RunTransactionResult(
@@ -516,6 +519,7 @@ def apply_reviewed_sync_plan(
                     cache_dir=cache_dir,
                     discovered_batch=entry.batch,
                     cancellation_requested=cancellation_requested,
+                    item_progress=(lambda count, total, stage, token: item_progress(item_offset + count, item_total, stage, token)) if item_progress is not None else None,
                 )
             except Exception:
                 return RunTransactionResult(
@@ -524,6 +528,7 @@ def apply_reviewed_sync_plan(
             completed.append(transaction)
             if not transaction.commit.committed:
                 break
+            item_offset += len(entry.batch.items)
             state = transaction.commit.state
             if transaction.source_result.interrupted:
                 return RunTransactionResult(tuple(completed), "operation_cancelled", index)

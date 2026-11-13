@@ -19,7 +19,7 @@ from canvas_ed_mcp.providers.base import (
     ProviderError,
 )
 
-from ..cancellation import OperationCancelled, cancellation_scope, check_cancelled
+from ..cancellation import OperationCancelled, cancellation_scope, check_cancelled, progress_scope
 from .reuse import ContentReceipts
 
 from .decisions import decide_install, decide_source
@@ -387,6 +387,7 @@ def apply_source_transaction(
     cache_dir: Path,
     discovered_batch: ContentBatch | None = None,
     cancellation_requested: Callable[[], bool] | None = None,
+    item_progress: Callable[[int, int, str, str | None], None] | None = None,
 ) -> SourceTransactionResult:
     """Apply one source while preserving the required state -> course lock order.
 
@@ -455,6 +456,7 @@ def apply_source_transaction(
                 course_lock=course_lock,
                 cache_dir=cache_dir,
                 discovered_batch=discovered_batch,
+                item_progress=item_progress,
             )
         committed = commit_source_result(
             state,
@@ -642,6 +644,7 @@ def sync_course_source(
     course_lock: SyncLock | None = None,
     cache_dir: Path | None = None,
     discovered_batch: ContentBatch | None = None,
+    item_progress: Callable[[int, int, str, str | None], None] | None = None,
 ) -> SourceSyncResult:
     """Synchronize one confirmed course source without saving global state.
 
@@ -758,12 +761,20 @@ def sync_course_source(
     index: CourseFileIndex | None = None
     cancelled = False
     receipts = ContentReceipts(cache_dir, output_root, course_root) if cache_dir is not None and execution is ExecutionMode.APPLY else None
+    def notify(stage, token=None):
+        if item_progress is not None:
+            try:
+                item_progress(len(results), len(batch.items), stage, token)
+            except Exception:
+                pass
+
     for item in sorted(batch.items, key=lambda value: value.key.identity_tuple):
         try:
             check_cancelled()
         except OperationCancelled:
             cancelled = True
             break
+        notify("checking_local", _item_token(item.key))
         prior_skip = prior_skips.get(item.key)
         if (
             prior_skip is not None
@@ -829,12 +840,15 @@ def sync_course_source(
                 existing = receipts.find(receipt, index)
                 if existing is not None:
                     # A receipt proves bytes/revision, not permission to overwrite a file.
+                    notify("reusing_local", _item_token(item.key))
                     updates.append(PreviousSource(item.key, item.signature, None, False))
                     results.append(ItemSyncResult(_item_token(item.key), "deduplicate", "verified_local_revision"))
                     continue
-            temporary, retry, rendered_issues, materialize_issue = _materialize(
-                provider, item, course=course, cache_dir=Path(cache_dir)
-            )
+            notify("downloading_file" if item.key.kind in {RemoteKind.FILE, RemoteKind.RESOURCE} else "rendering_page", _item_token(item.key))
+            with progress_scope(lambda stage: notify(stage, _item_token(item.key))):
+                temporary, retry, rendered_issues, materialize_issue = _materialize(
+                    provider, item, course=course, cache_dir=Path(cache_dir)
+                )
             source_issue_codes.extend(rendered_issues)
             if materialize_issue is not None:
                 skip_updates.append(
@@ -856,6 +870,7 @@ def sync_course_source(
                     )
                 )
                 continue
+            notify("verifying_content", _item_token(item.key))
             assert temporary is not None
             materialized_size = temporary.stat().st_size
             if index is None:
@@ -894,6 +909,7 @@ def sync_course_source(
                 output_root=output_root, course_root=course_root, item=item
             )
             check_cancelled()
+            notify("saving_file", _item_token(item.key))
             published = install_new_atomic(
                 temporary,
                 output_root=output_root,
@@ -951,6 +967,7 @@ def sync_course_source(
         check_cancelled()
     except OperationCancelled:
         cancelled = True
+    notify("items_cancelled" if cancelled else "items_complete")
     if cancelled:
         source_issue_codes.append("operation_cancelled")
     if reconciliation_required and not cancelled:

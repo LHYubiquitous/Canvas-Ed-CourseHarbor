@@ -12,6 +12,7 @@ from canvas_ed_mcp.config import ConfigLoadError, load_config_bytes
 from canvas_ed_mcp.paths import ProfilePaths, resolve_profile_paths
 from canvas_ed_mcp.providers.base import CourseContentProvider
 from canvas_ed_mcp.secrets import SecretUnavailable, resolve_secret
+from canvas_ed_mcp.sync.engine import _item_token
 from canvas_ed_mcp.sync.reviewed import (
     ReviewedSyncCancelled,
     ReviewedSyncPlan,
@@ -95,15 +96,17 @@ def _item_summaries(
     discovered = sorted(
         source_plan.batch.items, key=lambda item: item.key.identity_tuple
     )
-    if len(discovered) != len(result.items):
-        return ()
+    remote_by_token = {_item_token(remote.key): remote for remote in discovered}
     stored = {
         update.key: update.stored_file.output_relative_path
         for update in result.state_updates
         if update.stored_file is not None
     }
     summaries: list[SyncItemSummary] = []
-    for remote, item in zip(discovered, result.items, strict=True):
+    for item in result.items:
+        remote = remote_by_token.get(item.item_token)
+        if remote is None:
+            continue
         relative = item.destination or stored.get(remote.key)
         destination = None
         if relative is not None:
@@ -115,6 +118,7 @@ def _item_summaries(
                 action=item.action,
                 reason=item.reason,
                 destination=destination,
+                item_token=item.item_token,
             )
         )
     return tuple(summaries)
@@ -166,10 +170,11 @@ def _progress(
     total: int | None,
     *,
     code: str | None = None,
+    item_token: str | None = None,
 ) -> None:
     if callback is not None:
         try:
-            callback(ProgressEvent(operation_id, phase, completed, total, code=code))
+            callback(ProgressEvent(operation_id, phase, completed, total, code=code, item_token=item_token))
         except Exception:
             # Progress is observational. A disposed UI receiver must not alter the
             # reviewed operation or bypass provider-session cleanup.
@@ -513,6 +518,7 @@ class ReviewedSyncOperation:
                     backup_path=pending.paths.state_backup_file,
                     lock_dir=pending.paths.lock_dir,
                     cache_dir=pending.paths.cache_dir,
+                    item_progress=lambda count, total, stage, token: _progress(progress, _APPLY_OPERATION, ProgressPhase.APPLYING, count, total, code=stage, item_token=token),
                     cancellation_requested=(
                         lambda: cancellation.cancellation_requested
                     ),

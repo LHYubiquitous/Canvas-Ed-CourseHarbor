@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from dataclasses import replace
 from threading import Event
 from unittest.mock import patch
 
@@ -31,6 +32,7 @@ from canvas_ed_mcp.application.daily_sync import (
     SyncPreviewRequest,
     SyncPreviewResult,
     SyncReview,
+    SyncItemSummary,
     SyncSourceSummary,
 )
 from canvas_ed_mcp.application.folder_actions import OpenOutputFolderResult
@@ -567,6 +569,52 @@ class DailyDashboardTests(unittest.TestCase):
         self.assertTrue(blocking.cancellation_seen)
         self.assertEqual(1, blocking.close_calls)
         self.assertFalse(self.window.isVisible())
+
+
+@unittest.skipUnless(QApplication is not None, "PySide6 is not installed")
+class DailyDashboardItemProgressTests(unittest.TestCase):
+    def test_apply_keeps_item_label_and_stopping_message(self) -> None:
+        from PySide6.QtCore import Qt
+        from canvas_ed_mcp.ui.daily_dashboard import DailyDashboardWindow, _Cancellation
+
+        application = QApplication.instance() or QApplication([])
+        application.setQuitOnLastWindowClosed(False)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            review = _review(root)
+            token = "a" * 16
+            item = SyncItemSummary("<notes.pdf>", "file", "would_fetch", "new_source", item_token=token)
+            review = replace(review, sources=(replace(review.sources[0], items=(item,)),))
+            port = _Port(SyncPreviewResult(OperationStatus.SUCCEEDED, review), SyncApplyResult(OperationStatus.SUCCEEDED))
+            window = DailyDashboardWindow(
+                overview=_overview(root), controller=DailySyncController(port),
+                request=SyncPreviewRequest("test", config_path=root / "profile.toml"),
+                folder_service=_FolderService(root), confirm_apply=lambda *_: True,
+            )
+            try:
+                window._review = review
+                with patch.object(window, "_start_task") as start:
+                    window.confirm_and_apply()
+                start.assert_called_once()
+                self.assertIsNone(window._review)
+                event = ProgressEvent("apply", ProgressPhase.APPLYING, 1, 3,
+                    code="downloading_file", item_token=token)
+                window._progress_received(window._generation, event)
+                self.assertIn("Downloading attachment", window.progress_label.text())
+                self.assertIn("Canvas · <notes.pdf>", window.progress_label.text())
+                self.assertIn("1/3", window.progress_label.text())
+                self.assertEqual(Qt.TextFormat.PlainText, window.progress_label.textFormat())
+                self.assertEqual(1, window.progress_bar.value())
+                self.assertEqual(3, window.progress_bar.maximum())
+                window._cancellation = _Cancellation()
+                window.cancel_active_operation()
+                stopping = window.progress_label.text()
+                window._progress_received(window._generation, event)
+                self.assertEqual(stopping, window.progress_label.text())
+                self.assertIn("Stopping downloads", stopping)
+            finally:
+                window._cancellation = None
+                window.close()
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ from urllib.parse import (
 )
 
 from canvas_ed_mcp.cancellable_http import cancellable_client
-from canvas_ed_mcp.cancellation import check_cancelled
+from canvas_ed_mcp.cancellation import check_cancelled, report_progress
 
 import httpx
 from bs4 import BeautifulSoup
@@ -1278,6 +1278,7 @@ class CanvasProvider(_CanvasCatalogProvider):
         resolutions = []
         for reference in references:
             check_cancelled()
+            report_progress("downloading_images")
             resolutions.append(self._resolve_page_image(reference))
         source_url = page.get("html_url")
         if not isinstance(source_url, str) or not source_url:

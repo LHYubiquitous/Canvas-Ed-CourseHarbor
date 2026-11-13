@@ -247,7 +247,10 @@ class ApplicationSyncOperationTests(unittest.TestCase):
                     ProgressPhase.APPLYING,
                     ProgressPhase.CLEANING_UP,
                 ],
-                [event.phase for event in progress],
+                [event.phase for event in progress if event.code not in {
+                    "checking_local", "downloading_file", "verifying_content",
+                    "saving_file", "items_complete",
+                }],
             )
             self.assertEqual(OperationStatus.SUCCEEDED.value, progress[-1].code)
 
@@ -468,6 +471,25 @@ class ApplicationSyncOperationTests(unittest.TestCase):
             self.assertEqual(1, provider.close_calls)
             self.assertFalse((root / "COMP0001").exists())
             self.assertFalse((root / "COMP0002").exists())
+
+    def test_apply_reports_item_stage_and_counts_without_titles_in_events(self):
+        with TemporaryDirectory() as directory:
+            root=Path(directory); provider=_Provider()
+            operation, paths=self._operation(root,provider,[])
+            preview=operation.preview(SyncPreviewRequest("test",config_path=paths.config_file),
+                progress=None,cancellation=_NeverCancelled())
+            events=[]
+            applied=operation.apply(preview.review,progress=events.append,cancellation=_NeverCancelled())
+            self.assertEqual(OperationStatus.SUCCEEDED,applied.status)
+            stages=[event.code for event in events]
+            self.assertIn("checking_local",stages)
+            self.assertIn("downloading_file",stages)
+            self.assertIn("saving_file",stages)
+            item_events=[event for event in events if event.code=="downloading_file"]
+            self.assertTrue(all(event.item_token and len(event.item_token)==16 for event in item_events))
+            self.assertTrue(any(event.code=="items_complete" and event.completed==event.total for event in events))
+            self.assertNotIn("https://",repr(events))
+            self.assertEqual(preview.review.sources[0].items[0].item_token,item_events[0].item_token)
 
     def test_raising_progress_callback_does_not_change_apply_or_leak_lease(self) -> None:
         with TemporaryDirectory() as directory:

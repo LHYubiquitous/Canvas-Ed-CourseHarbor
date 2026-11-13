@@ -81,6 +81,7 @@ class SyncItemSummary:
     action: str
     reason: str
     destination: Path | None = None
+    item_token: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("display_name", "kind", "action", "reason"):

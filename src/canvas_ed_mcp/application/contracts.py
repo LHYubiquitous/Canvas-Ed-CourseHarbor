@@ -100,6 +100,7 @@ class ProgressEvent:
     provider: str | None = None
     course_key: str | None = None
     code: str | None = None
+    item_token: str | None = None
 
     def __post_init__(self) -> None:
         _require_safe_text(self.operation_id, "operation_id")
@@ -124,6 +125,8 @@ class ProgressEvent:
             _require_code(self.provider, "provider")
         if self.course_key is not None:
             _require_safe_text(self.course_key, "course_key")
+        if self.item_token is not None and (not isinstance(self.item_token, str) or not re.fullmatch(r"[0-9a-f]{16}", self.item_token)):
+            raise ValueError("item_token must be a short opaque digest")
         if self.code is not None:
             _require_code(self.code, "code")
 

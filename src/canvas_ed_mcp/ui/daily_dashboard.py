@@ -209,6 +209,7 @@ class DailyDashboardWindow(QMainWindow):
         self._active_task: _ControllerTask | None = None
         self._cancellation: _Cancellation | None = None
         self._review: SyncReview | None = None
+        self._apply_item_labels: dict[str, str] = {}
         self._close_when_idle = False
         self._allow_close = False
 
@@ -489,6 +490,7 @@ class DailyDashboardWindow(QMainWindow):
         partial = self.apply_button.text() == "Apply available items"
         if not self._confirm_apply(review, partial):
             return
+        self._apply_item_labels = {item.item_token: f"{source.source_display_name} · {item.display_name}" for source in review.sources for item in source.items if item.item_token is not None}
         self._review = None
         self._start_task(
             "apply",
@@ -508,13 +510,29 @@ class DailyDashboardWindow(QMainWindow):
     def _progress_received(self, serial: int, event: object) -> None:
         if serial != self._generation or not isinstance(event, ProgressEvent):
             return
-        label = _PHASE_COPY.get(event.phase, "Working")
+        if self._cancellation is not None and self._cancellation.cancellation_requested:
+            return
+        item_stages = {
+            "checking_local": "Checking local files",
+            "reusing_local": "Using verified local content",
+            "downloading_file": "Downloading attachment",
+            "rendering_page": "Preparing page",
+            "downloading_images": "Downloading page images",
+            "verifying_content": "Verifying content",
+            "saving_file": "Saving file",
+            "items_complete": "Items processed",
+            "items_cancelled": "Stopped",
+        }
+        label = item_stages.get(event.code, _PHASE_COPY.get(event.phase, "Working"))
+        if event.item_token in self._apply_item_labels:
+            label += " · " + self._apply_item_labels[event.item_token]
         if event.total is not None and event.total > 0:
             self.progress_bar.setRange(0, event.total)
             self.progress_bar.setValue(event.completed)
             label += f" · {event.completed}/{event.total}"
         else:
             self.progress_bar.setRange(0, 0)
+        self.progress_label.setTextFormat(Qt.TextFormat.PlainText)
         self.progress_label.setText(label)
 
     @Slot(int, str, object)

@@ -7,6 +7,8 @@ Semantic Versioning; release-candidate versions are not stable API commitments.
 
 ### Responsive cancellation and verified local reuse
 
+- Shows the current item, local-check/download/image/save stage, and processed item
+  count during Apply. Cancellation keeps its stopping message until cleanup finishes.
 - Carries cancellation through individual files, image requests, directory scans,
   hashing, staging copies, and interruptible HTTP waits. Finished publications are
   recorded before the operation returns cancelled; incomplete downloads are discarded.

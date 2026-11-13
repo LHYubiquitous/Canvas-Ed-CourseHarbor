@@ -20,6 +20,10 @@ ownership or permission to overwrite user files; incomplete HTML is not reusable
 Files lacking trustworthy prior evidence still require downloading for comparison.
 Receipts contain no credentials or request URLs and are excluded from releases.
 
+Apply progress reports item counts and stable stage codes with opaque item tokens.
+The desktop resolves titles from its existing review, so progress events carry no
+titles or request URLs. Cancellation preserves the stopping message during cleanup.
+
 Tests cover real local sockets stalled before headers and during bodies (under a
 2-second test threshold), no surviving HTTP worker after close, cancelled staging,
 partial state persistence/resume, moved-file reuse without network requests, and
