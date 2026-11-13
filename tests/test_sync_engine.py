@@ -80,6 +80,57 @@ class SyncEngineTests(unittest.TestCase):
             "cache_dir": root / ".cache",
         }
 
+    def test_reimport_reuses_moved_content_before_download_without_claiming_ownership(self):
+        with TemporaryDirectory() as directory:
+            root=Path(directory)
+            course, source=self.course(InitialSyncMode.IMPORT_ALL)
+            provider=FakeProvider((item(RemoteKind.RESOURCE,"notes"),))
+            first=apply_configured_source(profile="test",course=course,source=source,
+                provider=provider,output_root=root,**self._apply_paths(root))
+            old=root/first.commit.state.sources[0].stored_file.output_relative_path
+            moved=old.parent.with_name("Organized")
+            old.parent.rename(moved)
+            # A new profile/state can reuse proven content without adopting user files.
+            paths=self._apply_paths(root)
+            paths["state_path"]=root/"fresh-state.json"
+            paths["backup_path"]=root/"fresh-backup.json"
+            second=apply_configured_source(profile="test",course=course,source=source,
+                provider=provider,output_root=root,**paths)
+            self.assertTrue(second.commit.committed)
+            self.assertEqual(1, provider.binary_calls)
+            self.assertEqual("deduplicate", second.source_result.items[0].action)
+            self.assertIsNone(second.commit.state.sources[0].stored_file)
+            self.assertEqual(b"course content",(moved/old.name).read_bytes())
+            # Changing remote revision requires new evidence, even at the same name/size.
+            provider.items=(item(RemoteKind.RESOURCE,"notes","r2"),)
+            apply_configured_source(profile="test",course=course,source=source,
+                provider=provider,output_root=root,**paths)
+            self.assertEqual(2,provider.binary_calls)
+
+    def test_receipt_never_reuses_edited_same_size_or_incomplete_content(self):
+        for edited, incomplete in ((True, False), (False, True)):
+            with self.subTest(edited=edited, incomplete=incomplete), TemporaryDirectory() as directory:
+                root=Path(directory)
+                course, source=self.course(InitialSyncMode.IMPORT_ALL)
+                provider=FakeProvider((item(RemoteKind.LESSON,"notes"),))
+                original_render=provider.render_html
+                if incomplete:
+                    def render(remote):
+                        rendered=original_render(remote)
+                        return replace(rendered,retry_required=True)
+                    provider.render_html=render
+                first=apply_configured_source(profile="test",course=course,source=source,
+                    provider=provider,output_root=root,**self._apply_paths(root))
+                stored=root/first.commit.state.sources[0].stored_file.output_relative_path
+                if edited:
+                    stored.write_bytes(b"x"*stored.stat().st_size)
+                paths=self._apply_paths(root);paths["state_path"]=root/"new-state.json"
+                paths["backup_path"]=root/"new-backup.json"
+                apply_configured_source(profile="test",course=course,source=source,
+                    provider=provider,output_root=root,**paths)
+                self.assertEqual(2,provider.render_calls)
+                if edited: self.assertTrue(stored.read_bytes().startswith(b"xxx"))
+
     def test_batch_scans_once_and_deduplicates_newly_installed_files(self):
         from canvas_ed_mcp.sync.storage import CourseFileIndex
         with TemporaryDirectory() as directory:

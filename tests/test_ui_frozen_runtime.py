@@ -77,3 +77,23 @@ class FrozenRuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FrozenNetworkRuntimeTests(unittest.TestCase):
+    def test_bundle_smoke_exercises_async_transport(self):
+        import contextlib
+        import importlib.util
+        import io
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        path = Path(__file__).resolve().parents[1] / "packaging/windows/courseharbor_cli.py"
+        spec = importlib.util.spec_from_file_location("bundle_cli_smoke", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        output = io.StringIO()
+        with patch("canvas_ed_mcp.secrets.keyring_status", return_value=SimpleNamespace(
+            backend="synthetic", category="ready", available=True)), contextlib.redirect_stdout(output):
+            result = module._bundle_smoke()
+        self.assertEqual(0, result)
+        self.assertEqual("ready", json.loads(output.getvalue())["transport_runtime"])

@@ -441,7 +441,7 @@ class ApplicationSyncOperationTests(unittest.TestCase):
             self.assertEqual(1, provider.close_calls)
             self.assertFalse(paths.state_file.exists())
 
-    def test_apply_cancels_before_next_source_and_returns_partial_prefix(self) -> None:
+    def test_apply_cancels_before_next_source_and_reports_cancelled(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             provider = _Provider()
@@ -462,11 +462,11 @@ class ApplicationSyncOperationTests(unittest.TestCase):
                 cancellation=cancellation,
             )
 
-            self.assertEqual(OperationStatus.PARTIAL, applied.status)
+            self.assertEqual(OperationStatus.CANCELLED, applied.status)
             self.assertEqual("operation_cancelled", applied.issues[0].code)
             self.assertEqual(1, provider.binary_calls)
             self.assertEqual(1, provider.close_calls)
-            self.assertTrue((root / "COMP0001").exists())
+            self.assertFalse((root / "COMP0001").exists())
             self.assertFalse((root / "COMP0002").exists())
 
     def test_raising_progress_callback_does_not_change_apply_or_leak_lease(self) -> None:

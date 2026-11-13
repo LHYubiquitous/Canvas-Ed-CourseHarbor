@@ -204,6 +204,23 @@ class CourseFileIndexTests(unittest.TestCase):
 
 
 class AtomicInstallTests(unittest.TestCase):
+    def test_cancel_during_staging_does_not_publish_or_leave_staging(self):
+        from canvas_ed_mcp.cancellation import cancellation_scope, OperationCancelled
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary); source=root/"payload.bin"
+            source.write_bytes(b"x"*(3*1024*1024))
+            calls=0
+            def cancelled():
+                nonlocal calls
+                calls+=1
+                return calls>=2
+            with cancellation_scope(cancelled), self.assertRaises(OperationCancelled):
+                install_new_atomic(source,output_root=root,course_root=PurePosixPath("COURSE1"),
+                    destination=PurePosixPath("COURSE1/new.bin"))
+            self.assertFalse((root/"COURSE1/new.bin").exists())
+            self.assertFalse(list((root/"COURSE1").glob("*.staging")))
+
+
     def test_install_requires_a_held_matching_course_lock(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "output"

@@ -92,6 +92,8 @@ src/canvas_ed_mcp/application/setup_session.py
 src/canvas_ed_mcp/application/setup_workflow.py
 src/canvas_ed_mcp/application/sync_operation.py
 src/canvas_ed_mcp/application/sync_reports.py
+src/canvas_ed_mcp/cancellable_http.py
+src/canvas_ed_mcp/cancellation.py
 src/canvas_ed_mcp/cli.py
 src/canvas_ed_mcp/config.py
 src/canvas_ed_mcp/configure_flow.py
@@ -122,6 +124,7 @@ src/canvas_ed_mcp/sync/locking.py
 src/canvas_ed_mcp/sync/model.py
 src/canvas_ed_mcp/sync/naming.py
 src/canvas_ed_mcp/sync/policy.py
+src/canvas_ed_mcp/sync/reuse.py
 src/canvas_ed_mcp/sync/reviewed.py
 src/canvas_ed_mcp/sync/state.py
 src/canvas_ed_mcp/sync/storage.py
@@ -169,6 +172,7 @@ tests/test_application_setup_workflow.py
 tests/test_application_sync_operation.py
 tests/test_application_sync_reports.py
 tests/test_authentication_docs.py
+tests/test_cancellable_http.py
 tests/test_canvas_content_provider.py
 tests/test_canvas_provider.py
 tests/test_ci_workflow.py

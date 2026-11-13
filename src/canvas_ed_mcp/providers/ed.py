@@ -14,11 +14,15 @@ import mimetypes
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
+from contextvars import copy_context
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from threading import BoundedSemaphore, RLock
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlparse, urlsplit, urlunsplit
+
+from canvas_ed_mcp.cancellable_http import cancellable_client
+from canvas_ed_mcp.cancellation import check_cancelled
 
 import httpx
 from bs4 import BeautifulSoup
@@ -377,8 +381,8 @@ class EdProvider:
         self.base_url = normalized
         self.instance = _canonical_instance(parsed)
         self._headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-        self._client = client or httpx.Client(timeout=30.0, follow_redirects=False)
-        self._asset_client = asset_client or httpx.Client(timeout=30.0, follow_redirects=True)
+        self._client = client or cancellable_client(timeout=30.0, follow_redirects=False)
+        self._asset_client = asset_client or cancellable_client(timeout=30.0, follow_redirects=True)
         self._allowed_asset_hosts = frozenset(normalized_asset_hosts)
         self._max_inline_image_bytes = max_inline_image_bytes
         self._lesson_snapshots: dict[SourceKey, dict[str, Any]] = {}
@@ -746,8 +750,13 @@ class EdProvider:
 
     def _lesson_detail(self, remote_id: str) -> dict[str, Any]:
         # A provider is shared by concurrent course discovery operations.
-        with self._lesson_slots:
+        while not self._lesson_slots.acquire(timeout=.05):
+            check_cancelled()
+        try:
+            check_cancelled()
             return self._json(f"/lessons/{quote(remote_id, safe='')}")
+        finally:
+            self._lesson_slots.release()
 
     def _list_lessons(
         self, course_id: str, encoded_course_id: str
@@ -806,7 +815,7 @@ class EdProvider:
         with ThreadPoolExecutor(max_workers=4) as executor:
             for offset in range(0, len(validated), 4):
                 pending = [
-                    (index, remote_id, executor.submit(self._lesson_detail, remote_id))
+                    (index, remote_id, executor.submit(copy_context().run, self._lesson_detail, remote_id))
                     for index, remote_id in validated[offset:offset + 4]
                 ]
                 for index, remote_id, future in pending:
@@ -931,7 +940,10 @@ class EdProvider:
             reference = image.get("src")
             if isinstance(reference, str) and reference and reference not in references:
                 references.append(reference)
-        resolutions = tuple(self._resolve_image(reference) for reference in references)
+        resolutions = []
+        for reference in references:
+            check_cancelled()
+            resolutions.append(self._resolve_image(reference))
         rendered = render_page_html(
             title=str(lesson.get("title") or "Ed Lesson"),
             public_source_url=f"{self.base_url}/lessons/{quote(item.key.remote_id, safe='')}",
@@ -1069,6 +1081,7 @@ class EdProvider:
                 chunks: list[bytes] = []
                 total = 0
                 for chunk in response.iter_bytes():
+                    check_cancelled()
                     total += len(chunk)
                     if total > self._max_inline_image_bytes:
                         return HtmlAssetResolution(

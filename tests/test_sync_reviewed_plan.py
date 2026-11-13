@@ -176,6 +176,97 @@ class ReviewedSyncPlanTests(unittest.TestCase):
         )
         return plan, provider, config_path, state_path, backup_path, lock_dir, cache_dir
 
+    def test_real_ed_adapter_apply_propagates_cancel_through_http_and_cleans_up(self):
+        import asyncio
+        import time
+        import httpx
+        from threading import Timer
+        from canvas_ed_mcp.cancellable_http import CancellableTransport
+        from canvas_ed_mcp.providers.ed import EdProvider
+        cancelled, streaming, closed = Event(), Event(), Event()
+        class Stream(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                streaming.set()
+                yield b"partial"
+                await asyncio.sleep(30)
+            async def aclose(self): closed.set()
+        async def respond(request):
+            if request.url.path.endswith("/resources"):
+                return httpx.Response(200,json={"resources":[{"id":11,"name":"notes","extension":".pdf","size":16}]})
+            if request.url.path.endswith("/lessons"):
+                return httpx.Response(200,json={"lessons":[]})
+            self.assertEqual("POST",request.method)
+            return httpx.Response(200,stream=Stream())
+        transport=CancellableTransport(transport=httpx.MockTransport(respond))
+        provider=EdProvider("synthetic-token",base_url="https://ed.invalid/api",
+            client=httpx.Client(transport=transport),
+            asset_client=httpx.Client(transport=httpx.MockTransport(lambda request:httpx.Response(500))))
+        try:
+            with TemporaryDirectory() as directory:
+                root=Path(directory)
+                plan, _, config, state, backup, locks, cache=self._fixture(root)
+                reviewed=build_reviewed_sync_plan(profile="test",config_path=config,state_path=state,
+                    output_root=root,selections=((plan.sources[0].course,plan.sources[0].source),),
+                    providers={("ed","ed.invalid"):provider})
+                timer=Timer(.15,cancelled.set);timer.start();before=time.monotonic()
+                try:
+                    result=apply_reviewed_sync_plan(reviewed,expected_plan_digest=reviewed.digest,
+                        providers={("ed","ed.invalid"):provider},config_path=config,state_path=state,
+                        backup_path=backup,lock_dir=locks,cache_dir=cache,cancellation_requested=cancelled.is_set)
+                finally: timer.cancel()
+                self.assertEqual("operation_cancelled",result.issue_code)
+                self.assertTrue(streaming.is_set())
+                self.assertTrue(closed.is_set())
+                self.assertLess(time.monotonic()-before,2)
+                self.assertFalse((root/"COMP0001").exists())
+                self.assertFalse(list(cache.iterdir()))
+        finally: provider.close()
+        self.assertFalse(transport._thread.is_alive())
+
+    def test_cancel_mid_stream_commits_finished_file_and_resume_skips_it(self):
+        from dataclasses import replace
+        from canvas_ed_mcp.sync.state import load_state
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan, provider, config, state, backup, locks, cache = self._fixture(root)
+            first = _item()
+            second = replace(first, key=replace(first.key, remote_id="resource-2"), display_name="other.pdf")
+            third = replace(first, key=replace(first.key, remote_id="resource-3"), display_name="last.pdf")
+            provider.items = (first, second, third)
+            def preview():
+                return build_reviewed_sync_plan(profile="test", config_path=config, state_path=state,
+                    output_root=root, selections=((plan.sources[0].course, plan.sources[0].source),),
+                    providers={("ed", "ed.invalid"): provider})
+            reviewed = preview()
+            cancelled = Event()
+            opened = []
+            @contextmanager
+            def stream(item, **kwargs):
+                opened.append(item.key.remote_id)
+                def chunks():
+                    yield b"complete first"
+                    if item == second and opened.count("resource-2") == 1:
+                        cancelled.set()
+                        yield b"unfinished"
+                yield chunks()
+            provider.open_binary = stream
+            def apply(review):
+                return apply_reviewed_sync_plan(review, expected_plan_digest=review.digest,
+                    providers={("ed", "ed.invalid"): provider}, config_path=config, state_path=state,
+                    backup_path=backup, lock_dir=locks, cache_dir=cache,
+                    cancellation_requested=cancelled.is_set)
+            result = apply(reviewed)
+            self.assertEqual("operation_cancelled", result.issue_code)
+            self.assertEqual(["resource-1", "resource-2"], opened)
+            durable = load_state(state, profile="test", output_root=root)
+            self.assertEqual(["resource-1"], [entry.key.remote_id for entry in durable.sources])
+            self.assertFalse(any(path.name.startswith("tmp") for path in cache.iterdir()))
+            cancelled.clear()
+            resumed = apply(preview())
+            self.assertTrue(resumed.committed)
+            self.assertEqual(1, opened.count("resource-1"))
+            self.assertEqual(1, opened.count("resource-3"))
+
     def test_apply_executes_reviewed_batch_without_second_discovery(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

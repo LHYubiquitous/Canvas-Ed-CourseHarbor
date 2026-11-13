@@ -3,6 +3,27 @@
 All notable changes to the portable package are documented here. The project follows
 Semantic Versioning; release-candidate versions are not stable API commitments.
 
+## [0.2.0rc22] - 2026-11-13
+
+### Responsive cancellation and verified local reuse
+
+- Carries cancellation through individual files, image requests, directory scans,
+  hashing, staging copies, and interruptible HTTP waits. Finished publications are
+  recorded before the operation returns cancelled; incomplete downloads are discarded.
+- Preserves an import-all partial checkpoint so the next run skips finished items.
+- Reuses local content before downloading when a private receipt proves the same
+  source identity and remote revision and the local bytes still match. Moved files
+  can match by digest; same names/sizes alone are never sufficient. Reused files are
+  not adopted as sync-owned files.
+- Creates receipts only for complete content; absent/stale receipts, edited files,
+  changed remote revisions and incomplete rendered pages require normal verification.
+- Tests real loopback sockets stalled before headers and during bodies, bounded
+  cancellation, connection/worker cleanup, partial resume, moved-file reuse and
+  negative reuse cases. Frozen bundle smoke exercises the new async bridge.
+- Withdraws rc21 releases to drafts; rc21 lacked mid-source cancellation and
+  pre-download reuse. Its directory-index and bounded Ed concurrency improvements
+  are retained here.
+
 ## [0.2.0rc21] - 2026-11-13
 
 ### Faster material synchronization

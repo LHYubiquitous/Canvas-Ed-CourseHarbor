@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import hashlib
 import json
 import re
@@ -19,6 +19,9 @@ from canvas_ed_mcp.providers.base import (
     ProviderError,
 )
 
+from ..cancellation import OperationCancelled, cancellation_scope, check_cancelled
+from .reuse import ContentReceipts
+
 from .decisions import decide_install, decide_source
 from .locking import LockScope, SyncLock
 from .model import (
@@ -33,7 +36,7 @@ from .model import (
 )
 from .naming import destination_for
 from .policy import PolicySkipReason, evaluate_item_policy, evaluate_stream_size
-from .storage import CourseFileIndex, install_new_atomic, resolve_contained_path
+from .storage import CourseFileIndex, install_new_atomic, resolve_contained_path, sha256_file
 from .state import (
     ArchivedSourceState,
     InitializedSource,
@@ -108,6 +111,7 @@ class SourceSyncResult:
     initialization_complete: bool = False
     policy_skips: tuple[PolicySkipState, ...] = ()
     execution: ExecutionMode = ExecutionMode.DRY_RUN
+    interrupted: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +216,7 @@ def _materialize(
     course: CourseConfig,
     cache_dir: Path,
 ) -> tuple[Path | None, bool, tuple[str, ...], str | None]:
+    check_cancelled()
     cache_dir.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:
@@ -221,6 +226,7 @@ def _materialize(
                 received = 0
                 with provider.open_binary(item) as chunks:
                     for chunk in chunks:
+                        check_cancelled()
                         if not isinstance(chunk, bytes):
                             raise ValueError("provider binary streams must yield bytes")
                         allowed = evaluate_stream_size(
@@ -238,9 +244,11 @@ def _materialize(
                 issues: tuple[str, ...] = ()
             else:
                 rendered = provider.render_html(item)
+                check_cancelled()
                 handle.write(rendered.document.encode("utf-8"))
                 retry = rendered.retry_required
                 issues = rendered.issue_codes
+            check_cancelled()
             handle.flush()
         return temporary, retry, issues, None
     except BaseException:
@@ -289,14 +297,15 @@ def merge_source_result(
         provider=source.provider, instance=source.instance, course_id=source.course_id
     )
     status = classify_source_checkpoint(state, course=course, source=source)
-    if status is CheckpointStatus.RECONCILIATION_REQUIRED and not result.initialization_complete:
+    can_resume = result.interrupted and source.initial_mode is InitialSyncMode.IMPORT_ALL
+    if status is CheckpointStatus.RECONCILIATION_REQUIRED and not result.initialization_complete and not can_resume:
         return state
     initialized = {
         item for item in state.initialized_sources
         if (item.provider, item.instance, item.course_id)
         != (source.provider, source.instance, source.course_id)
     }
-    if result.initialization_complete:
+    if result.initialization_complete or can_resume:
         initialized.add(checkpoint)
     elif prior_checkpoint is not None:
         initialized.add(prior_checkpoint)
@@ -314,7 +323,7 @@ def merge_source_result(
         and belongs_to_source(entry.key)
     )
     if (
-        result.initialization_complete
+        (result.initialization_complete or can_resume)
         and status is CheckpointStatus.RECONCILIATION_REQUIRED
         and prior_checkpoint is not None
         and (old_sources or old_skips)
@@ -377,6 +386,7 @@ def apply_source_transaction(
     state_lock: SyncLock,
     cache_dir: Path,
     discovered_batch: ContentBatch | None = None,
+    cancellation_requested: Callable[[], bool] | None = None,
 ) -> SourceTransactionResult:
     """Apply one source while preserving the required state -> course lock order.
 
@@ -431,20 +441,21 @@ def apply_source_transaction(
     )
     initialized = status in {CheckpointStatus.CURRENT, CheckpointStatus.MIGRATED_COMPATIBLE}
     with course_lock:
-        result = sync_course_source(
-            course=course,
-            source=source,
-            provider=provider,
-            output_root=output_root,
-            previous=previous,
-            execution=ExecutionMode.APPLY,
-            initialized=initialized,
-            policy_skips=skips,
-            reconciliation_required=status is CheckpointStatus.RECONCILIATION_REQUIRED,
-            course_lock=course_lock,
-            cache_dir=cache_dir,
-            discovered_batch=discovered_batch,
-        )
+        with cancellation_scope(cancellation_requested):
+            result = sync_course_source(
+                course=course,
+                source=source,
+                provider=provider,
+                output_root=output_root,
+                previous=previous,
+                execution=ExecutionMode.APPLY,
+                initialized=initialized,
+                policy_skips=skips,
+                reconciliation_required=status is CheckpointStatus.RECONCILIATION_REQUIRED,
+                course_lock=course_lock,
+                cache_dir=cache_dir,
+                discovered_batch=discovered_batch,
+            )
         committed = commit_source_result(
             state,
             course=course,
@@ -745,7 +756,14 @@ def sync_course_source(
         source_issue_codes.append("content_capability_partial")
 
     index: CourseFileIndex | None = None
+    cancelled = False
+    receipts = ContentReceipts(cache_dir, output_root, course_root) if cache_dir is not None and execution is ExecutionMode.APPLY else None
     for item in sorted(batch.items, key=lambda value: value.key.identity_tuple):
+        try:
+            check_cancelled()
+        except OperationCancelled:
+            cancelled = True
+            break
         prior_skip = prior_skips.get(item.key)
         if (
             prior_skip is not None
@@ -787,6 +805,12 @@ def sync_course_source(
             results.append(ItemSyncResult(_item_token(item.key), decision.action.value, decision.reason.value))
             continue
         if decision.action is SyncAction.SKIP:
+            if receipts is not None and old is not None and old.stored_file is not None and not old.retry_required and receipts.load(item) is None:
+                try:
+                    receipts.record(item, old.stored_file.output_relative_path, old.stored_file.written_sha256)
+                except OperationCancelled:
+                    cancelled = True
+                    break
             results.append(ItemSyncResult(_item_token(item.key), decision.action.value, decision.reason.value))
             continue
         if execution is ExecutionMode.DRY_RUN:
@@ -797,6 +821,17 @@ def sync_course_source(
 
         temporary: Path | None = None
         try:
+            check_cancelled()
+            receipt = receipts.load(item) if receipts is not None else None
+            if receipt is not None:
+                if index is None:
+                    index = CourseFileIndex.scan(output_root=output_root, course_root=course_root)
+                existing = receipts.find(receipt, index)
+                if existing is not None:
+                    # A receipt proves bytes/revision, not permission to overwrite a file.
+                    updates.append(PreviousSource(item.key, item.signature, None, False))
+                    results.append(ItemSyncResult(_item_token(item.key), "deduplicate", "verified_local_revision"))
+                    continue
             temporary, retry, rendered_issues, materialize_issue = _materialize(
                 provider, item, course=course, cache_dir=Path(cache_dir)
             )
@@ -822,6 +857,7 @@ def sync_course_source(
                 )
                 continue
             assert temporary is not None
+            materialized_size = temporary.stat().st_size
             if index is None:
                 index = CourseFileIndex.scan(output_root=output_root, course_root=course_root)
             observation = (
@@ -843,6 +879,8 @@ def sync_course_source(
                 )
                 results.append(ItemSyncResult(_item_token(item.key), install.action.value, install.reason.value, retry_required=True))
                 continue
+            if not retry and receipts is not None and identical is not None:
+                receipts.record(item, identical.output_relative_path, sha256_file(temporary), materialized_size)
             if install.action is SyncAction.DEDUPLICATE:
                 stored = (
                     old.stored_file
@@ -855,6 +893,7 @@ def sync_course_source(
             destination = _available_destination(
                 output_root=output_root, course_root=course_root, item=item
             )
+            check_cancelled()
             published = install_new_atomic(
                 temporary,
                 output_root=output_root,
@@ -871,8 +910,15 @@ def sync_course_source(
             except (OSError, ValueError):
                 # Publication succeeded; refresh failures must not turn it into a retry.
                 index = None
+            if not retry and receipts is not None:
+                # Saving completion and receipts must finish even if Cancel arrives now.
+                with cancellation_scope(None):
+                    receipts.record(item, published.stored_file.output_relative_path, published.stored_file.written_sha256, materialized_size)
             extra = rendered_issues + (("staging_cleanup_pending",) if published.staging_cleanup_pending else ())
             results.append(ItemSyncResult(_item_token(item.key), install.action.value, install.reason.value, destination, retry, extra))
+        except OperationCancelled:
+            cancelled = True
+            break
         except ProviderError as error:
             category = (
                 error.category
@@ -901,7 +947,13 @@ def sync_course_source(
             if temporary is not None and not _unlink_temporary(temporary):
                 source_issue_codes.append("cache_cleanup_pending")
 
-    if reconciliation_required:
+    try:
+        check_cancelled()
+    except OperationCancelled:
+        cancelled = True
+    if cancelled:
+        source_issue_codes.append("operation_cancelled")
+    if reconciliation_required and not cancelled:
         source_issue_codes.append(
             "reconcile_completed" if batch.complete else (
                 "reconcile_baseline_pending"
@@ -915,7 +967,8 @@ def sync_course_source(
         tuple(results),
         _upsert(previous, updates),
         tuple(dict.fromkeys(source_issue_codes)),
-        batch.complete,
+        batch.complete and not cancelled,
         _upsert_skips(policy_skips, skip_updates, skip_removals),
         execution,
+        cancelled,
     )

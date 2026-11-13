@@ -11,6 +11,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from ..cancellation import check_cancelled
+
 from .locking import LockScope, SyncLock
 from .model import LocalStatus, StoredFile, validate_output_relative_path
 
@@ -62,6 +64,7 @@ def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(chunk_size), b""):
+            check_cancelled()
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -199,6 +202,7 @@ class CourseFileIndex:
         for current, directory_names, file_names in os.walk(
             course_path, followlinks=False
         ):
+            check_cancelled()
             current_path = Path(current)
             directory_names[:] = sorted(
                 name
@@ -207,6 +211,7 @@ class CourseFileIndex:
                 and not _is_link(current_path / name)
             )
             for name in sorted(file_names):
+                check_cancelled()
                 if name in _IGNORED_SCAN_FILES or _is_internal_staging_name(name):
                     continue
                 candidate = current_path / name
@@ -331,6 +336,7 @@ def _stage_copy(source: Path, destination_directory: Path) -> tuple[Path, str]:
             staged = Path(target.name)
             with source.open("rb") as incoming:
                 for chunk in iter(lambda: incoming.read(1024 * 1024), b""):
+                    check_cancelled()
                     target.write(chunk)
                     digest.update(chunk)
             target.flush()
@@ -386,6 +392,7 @@ def install_new_atomic(
     target = resolve_contained_path(output_root, destination, must_exist=False)
     staged, written_hash = _stage_copy(source, target.parent)
     try:
+        check_cancelled()
         checked_target = resolve_contained_path(
             output_root, destination, must_exist=False
         )
@@ -414,6 +421,10 @@ def install_new_atomic(
             raise AtomicPublishUnsupported(
                 "destination filesystem does not support atomic no-clobber publication"
             ) from exc
+        raise
+
+    except BaseException:
+        staged.unlink(missing_ok=True)
         raise
 
     cleanup_pending: PurePosixPath | None = None

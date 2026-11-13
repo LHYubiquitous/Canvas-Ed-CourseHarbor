@@ -10,11 +10,24 @@ import sys
 def _bundle_smoke() -> int:
     try:
         import httpx
+        from httpcore._backends.anyio import AnyIOBackend
+        from canvas_ed_mcp.cancellable_http import CancellableTransport
 
         from canvas_ed_mcp.secrets import keyring_status
     except ImportError:
         print(json.dumps({"backend": "unavailable", "keyring": "missing_dependency"}))
         return 4
+    try:
+        # Exercise the packaged async bridge and include the real network backend.
+        assert AnyIOBackend is not None
+        async def respond(request):
+            return httpx.Response(200, content=b"transport-ready")
+        with httpx.Client(transport=CancellableTransport(transport=httpx.MockTransport(respond))) as client:
+            if client.get("https://runtime.invalid/check").content != b"transport-ready":
+                return 5
+    except Exception:
+        print(json.dumps({"transport_runtime": "failed", "keyring": "backend_error"}))
+        return 5
     try:
         status = keyring_status()
     except Exception:
@@ -25,6 +38,7 @@ def _bundle_smoke() -> int:
             {
                 "backend": status.backend,
                 "httpx": httpx.__version__,
+                "transport_runtime": "ready",
                 "keyring": status.category,
                 "ssl": ssl.OPENSSL_VERSION,
             },

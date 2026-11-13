@@ -8,6 +8,7 @@ import ipaddress
 import json
 import re
 from collections.abc import Iterator
+from contextvars import copy_context
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from threading import RLock
@@ -21,6 +22,9 @@ from urllib.parse import (
     urlsplit,
     urlunsplit,
 )
+
+from canvas_ed_mcp.cancellable_http import cancellable_client
+from canvas_ed_mcp.cancellation import check_cancelled
 
 import httpx
 from bs4 import BeautifulSoup
@@ -172,7 +176,7 @@ class _CanvasCatalogProvider:
         host = parsed.hostname.casefold()
         self.instance = host if parsed.port in {None, 443} else f"{host}:{parsed.port}"
         self._origin = _origin(normalized)
-        self._client = client or httpx.Client(timeout=30.0, follow_redirects=False)
+        self._client = client or cancellable_client(timeout=30.0, follow_redirects=False)
         self._headers = {"Authorization": f"Bearer {token}"}
 
     def close(self) -> None:
@@ -374,8 +378,8 @@ class CanvasProvider(_CanvasCatalogProvider):
                 raise ValueError("Canvas external asset hosts cannot be IP literals")
             normalized_hosts.add(allowed_host)
         self._allowed_asset_hosts = frozenset(normalized_hosts)
-        self._client = client or httpx.Client(timeout=30.0, follow_redirects=False)
-        self._asset_client = asset_client or httpx.Client(
+        self._client = client or cancellable_client(timeout=30.0, follow_redirects=False)
+        self._asset_client = asset_client or cancellable_client(
             timeout=30.0, follow_redirects=False
         )
         self._headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
@@ -733,7 +737,7 @@ class CanvasProvider(_CanvasCatalogProvider):
             and page_endpoints
         ):
             with ThreadPoolExecutor(max_workers=min(4, len(page_endpoints))) as executor:
-                futures = tuple(executor.submit(self._api_json, endpoint) for endpoint in page_endpoints)
+                futures = tuple(executor.submit(copy_context().run, self._api_json, endpoint) for endpoint in page_endpoints)
                 for endpoint, future in zip(page_endpoints, futures):
                     try:
                         page_payloads[endpoint] = future.result()
@@ -1211,6 +1215,7 @@ class CanvasProvider(_CanvasCatalogProvider):
                 chunks: list[bytes] = []
                 total = 0
                 for chunk in response.iter_bytes():
+                    check_cancelled()
                     total += len(chunk)
                     if total > self._max_inline_image_bytes:
                         return HtmlAssetResolution(
@@ -1270,9 +1275,10 @@ class CanvasProvider(_CanvasCatalogProvider):
                 link["href"] = urljoin(
                     self._public_origin, urlparse(reference).path
                 )
-        resolutions = tuple(
-            self._resolve_page_image(reference) for reference in references
-        )
+        resolutions = []
+        for reference in references:
+            check_cancelled()
+            resolutions.append(self._resolve_page_image(reference))
         source_url = page.get("html_url")
         if not isinstance(source_url, str) or not source_url:
             source_url = (

@@ -501,7 +501,7 @@ class DailyDashboardWindow(QMainWindow):
         self._cancellation.request()
         self.cancel_button.setEnabled(False)
         self.progress_label.setText(
-            "Cancellation requested. The current safe boundary will finish first."
+            "Stopping downloads and saving completed items…"
         )
 
     @Slot(int, object)
@@ -586,7 +586,7 @@ class DailyDashboardWindow(QMainWindow):
             self._set_status("The reviewed plan changed. Build a new preview.", "warning")
             self.progress_label.setText("New preview required")
         elif result.status is OperationStatus.CANCELLED:
-            self._set_status("The material update was cancelled at a safe boundary.", "warning")
+            self._set_status("Update cancelled. Completed files are kept; unfinished downloads were stopped.", "warning")
             self.progress_label.setText("Update cancelled")
         else:
             self._set_status("The reviewed update could not be completed.", "error")

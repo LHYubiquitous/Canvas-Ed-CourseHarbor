@@ -40,3 +40,5 @@
 动态版本、release、平台支持和政策在真正发布前必须重新检查，不能把本表当作永久事实。
 
 2026-11-13: HTTPX Client thread sharing verified against https://www.python-httpx.org/api/#client. Ed endpoints and credential delegation are unchanged; Ed API documentation remains unofficial/degraded.
+
+2026-11-13 cancellation transport: https://www.python-httpx.org/advanced/transports/ and https://www.python-httpx.org/async/ — custom transports, async streaming and mandatory response closure. Provider endpoints, TLS verification, redirect validation and credential boundaries are unchanged.

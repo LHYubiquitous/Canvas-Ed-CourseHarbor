@@ -1,5 +1,33 @@
 # Release and Security Audit
 
+## 0.2.0rc22 cancellation and local-reuse candidate
+
+Status: **LOCAL FEATURE REGRESSIONS PASS; FINAL RELEASE GATES PENDING**
+Audit date: 2026-11-13
+
+Both rc21 GitHub releases were withdrawn to drafts at the owner's request. Their
+assets and tags remain preserved, but rc21 is not the recommended download.
+
+This candidate propagates cancellation into HTTP waits, streamed downloads, image
+requests, local scanning/hashing and pre-publication staging. The operation waits
+for network cancellation/cleanup and persists finished content before returning.
+Import-all partial runs retain a resumable binding without pretending unprocessed
+items were fetched. Baseline cancellation does not authorize historical downloads.
+
+Private content receipts are scoped by output/course/source/revision. They only
+allow pre-download reuse after hashing actual local bytes. They never confer
+ownership or permission to overwrite user files; incomplete HTML is not reusable.
+Files lacking trustworthy prior evidence still require downloading for comparison.
+Receipts contain no credentials or request URLs and are excluded from releases.
+
+Tests cover real local sockets stalled before headers and during bodies (under a
+2-second test threshold), no surviving HTTP worker after close, cancelled staging,
+partial state persistence/resume, moved-file reuse without network requests, and
+same-size edits/changed revisions/incomplete pages falling back to verification.
+Final exact-commit CI and artifact results are linked from the release page.
+Owner-device real-account timing, interactive installer acceptance and notarization
+remain NOT_RUN. macOS remains ad-hoc signed. PyPI remains outside scope.
+
 ## 0.2.0rc21 synchronization performance candidate
 
 Status: **LOCAL RELEASE SUITE, CLEAN INSTALL, AND DETERMINISTIC PACKET PASS; REMOTE GATES PENDING**

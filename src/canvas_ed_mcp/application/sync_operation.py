@@ -578,7 +578,7 @@ class ReviewedSyncOperation:
             )
             for provider in close_failures
         )
-        if run.issue_code == "operation_cancelled" and not run.transactions:
+        if run.issue_code == "operation_cancelled":
             status = OperationStatus.CANCELLED
         elif run.issue_code in conflict_codes and not run.transactions:
             status = OperationStatus.CONFLICT

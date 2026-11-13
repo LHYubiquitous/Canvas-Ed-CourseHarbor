@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 
+from canvas_ed_mcp.cancellation import cancellation_scope
 from canvas_ed_mcp.config import CourseConfig, CourseSource, load_config_bytes
 from canvas_ed_mcp.providers.base import ContentBatch, CourseContentProvider
 
@@ -353,35 +354,36 @@ def build_reviewed_sync_plan(
     def discover(
         selection: tuple[CourseConfig, CourseSource],
     ) -> ReviewedSourcePlan:
-        course, source = selection
-        if _cancelled(cancellation_requested):
-            raise ReviewedSyncCancelled("reviewed sync discovery cancelled")
-        provider = providers[(source.provider, source.instance)]
-        previous, initialized, skips, reconciliation_required = _source_state_context(
-            state, course=course, source=source
-        )
-        capturing = _CapturingProvider(provider)
-        preview = sync_course_source(
-            course=course,
-            source=source,
-            provider=capturing,
-            output_root=output_root,
-            previous=previous,
-            execution=ExecutionMode.DRY_RUN,
-            initialized=initialized,
-            reconciliation_required=reconciliation_required,
-            policy_skips=skips,
-        )
-        batch = capturing.batch or ContentBatch(
-            source.provider,
-            source.instance,
-            source.course_id,
-            frozenset(),
-            (),
-            (),
-            (),
-        )
-        return ReviewedSourcePlan(course, source, batch, preview)
+        with cancellation_scope(cancellation_requested):
+            course, source = selection
+            if _cancelled(cancellation_requested):
+                raise ReviewedSyncCancelled("reviewed sync discovery cancelled")
+            provider = providers[(source.provider, source.instance)]
+            previous, initialized, skips, reconciliation_required = _source_state_context(
+                state, course=course, source=source
+            )
+            capturing = _CapturingProvider(provider)
+            preview = sync_course_source(
+                course=course,
+                source=source,
+                provider=capturing,
+                output_root=output_root,
+                previous=previous,
+                execution=ExecutionMode.DRY_RUN,
+                initialized=initialized,
+                reconciliation_required=reconciliation_required,
+                policy_skips=skips,
+            )
+            batch = capturing.batch or ContentBatch(
+                source.provider,
+                source.instance,
+                source.course_id,
+                frozenset(),
+                (),
+                (),
+                (),
+            )
+            return ReviewedSourcePlan(course, source, batch, preview)
 
     ordered_plans: list[ReviewedSourcePlan | None] = [None] * len(selections)
     with ThreadPoolExecutor(max_workers=min(4, len(selections))) as executor:
@@ -513,6 +515,7 @@ def apply_reviewed_sync_plan(
                     state_lock=state_lock,
                     cache_dir=cache_dir,
                     discovered_batch=entry.batch,
+                    cancellation_requested=cancellation_requested,
                 )
             except Exception:
                 return RunTransactionResult(
@@ -522,6 +525,8 @@ def apply_reviewed_sync_plan(
             if not transaction.commit.committed:
                 break
             state = transaction.commit.state
+            if transaction.source_result.interrupted:
+                return RunTransactionResult(tuple(completed), "operation_cancelled", index)
     return RunTransactionResult(tuple(completed))
 
 
